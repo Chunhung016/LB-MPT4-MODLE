@@ -1,0 +1,8 @@
+{
+  "name": "Little Bee MPT4 Module @2026",
+  "description": "Little Bee MPT4 Module @2026 educational portal with peaceful bee and school theme, bubbly interactive play, and secret logic settings.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
