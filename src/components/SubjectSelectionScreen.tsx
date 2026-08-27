@@ -15,13 +15,34 @@ import PeacefulBeeBackground from './PeacefulBeeBackground';
 import { playBubbleSound } from '../utils/audio';
 import SubjectLessonModal from './SubjectLessonModal';
 import EnglishPartsModal from './EnglishPartsModal';
+import LanguageSectionsModal from './LanguageSectionsModal';
 import { useDeviceAccess } from '../hooks/useDeviceAccess';
+
+const EnglishPart3Experience = lazy(() =>
+  import('../features/english-part3/EnglishPart3Experience').then((module) => ({
+    default: module.EnglishPart3Experience,
+  })),
+);
+
+const EnglishPart4Experience = lazy(() =>
+  import('../features/english-part4/EnglishPart4Experience').then((module) => ({
+    default: module.EnglishPart4Experience,
+  })),
+);
+
+const EnglishPart5Experience = lazy(() =>
+  import('../features/english-part5/EnglishPart5Experience').then((module) => ({
+    default: module.EnglishPart5Experience,
+  })),
+);
 
 const SpellingBeeExperience = lazy(() =>
   import('../features/part5/Part5Experience').then((module) => ({
     default: module.SpellingBeeExperience,
   })),
 );
+
+type EnglishExperience = 'part3' | 'part4' | 'part5' | 'spelling-bee' | null;
 
 interface SubjectSelectionScreenProps {
   module: RegisteredModule;
@@ -33,13 +54,27 @@ export default function SubjectSelectionScreen({
   onBackToModules,
 }: SubjectSelectionScreenProps) {
   const [selectedSubject, setSelectedSubject] = useState<SubjectDefinition | null>(null);
-  const [isSpellingBeeOpen, setIsSpellingBeeOpen] = useState(false);
+  const [languageLessonOpen, setLanguageLessonOpen] = useState(false);
+  const [activeEnglishExperience, setActiveEnglishExperience] = useState<EnglishExperience>(null);
   const deviceAccess = useDeviceAccess();
+
+  const openEnglishExperience = (experience: Exclude<EnglishExperience, null>) => {
+    setSelectedSubject(null);
+    setActiveEnglishExperience(experience);
+  };
+
+  const closeEnglishExperience = () => {
+    setActiveEnglishExperience(null);
+    setSelectedSubject(SUBJECTS.find((subject) => subject.id === 'english') ?? null);
+  };
 
   const handleSubjectClick = (subj: SubjectDefinition) => {
     playBubbleSound();
+    setLanguageLessonOpen(false);
     setSelectedSubject(subj);
   };
+
+  const isSectionedLanguage = selectedSubject?.id === 'bm' || selectedSubject?.id === 'chinese';
 
   const getSubjectIcon = (iconName: string, accentColor: string) => {
     switch (iconName) {
@@ -200,43 +235,60 @@ export default function SubjectSelectionScreen({
         <EnglishPartsModal
           module={module}
           onClose={() => setSelectedSubject(null)}
-          onOpenSpellingBee={() => {
-            setSelectedSubject(null);
-            setIsSpellingBeeOpen(true);
-          }}
+          onOpenPart3={() => openEnglishExperience('part3')}
+          onOpenPart4={() => openEnglishExperience('part4')}
+          onOpenPart5={() => openEnglishExperience('part5')}
+          onOpenSpellingBee={() => openEnglishExperience('spelling-bee')}
           spellingBeeEnabled={deviceAccess.spellingBeeEnabled}
           activationCode={deviceAccess.activationCode}
           accessLoading={deviceAccess.loading}
           accessError={deviceAccess.error}
           onRefreshAccess={deviceAccess.refresh}
         />
+      ) : isSectionedLanguage && !languageLessonOpen && selectedSubject ? (
+        <LanguageSectionsModal
+          module={module}
+          subject={selectedSubject}
+          onClose={() => setSelectedSubject(null)}
+          onOpenFirstSection={() => setLanguageLessonOpen(true)}
+        />
       ) : (
         <SubjectLessonModal
           module={module}
           subject={selectedSubject}
-          onClose={() => setSelectedSubject(null)}
+          onClose={() => {
+            if (isSectionedLanguage) {
+              setLanguageLessonOpen(false);
+              return;
+            }
+            setSelectedSubject(null);
+          }}
+          sectionLabel={selectedSubject?.id === 'bm' ? 'Bahagian A' : selectedSubject?.id === 'chinese' ? '甲组' : undefined}
         />
       )}
 
-      {isSpellingBeeOpen ? (
+      {activeEnglishExperience ? (
         <Suspense
           fallback={
             <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[#FFFBEB]">
               <div className="flex flex-col items-center gap-3 text-[#78350F]">
                 <div className="h-14 w-14 animate-bounce rounded-full border-[8px] border-sky-100 bg-white shadow-lg" />
                 <span className="font-['Fredoka',sans-serif] text-sm font-black tracking-wide">
-                  LOADING SPELLING BEE…
+                  LOADING ENGLISH PART…
                 </span>
               </div>
             </div>
           }
         >
-          <SpellingBeeExperience
-            onExit={() => {
-              setIsSpellingBeeOpen(false);
-              setSelectedSubject(SUBJECTS.find((subject) => subject.id === 'english') ?? null);
-            }}
-          />
+          {activeEnglishExperience === 'part3' ? (
+            <EnglishPart3Experience onExit={closeEnglishExperience} />
+          ) : activeEnglishExperience === 'part4' ? (
+            <EnglishPart4Experience onExit={closeEnglishExperience} />
+          ) : activeEnglishExperience === 'part5' ? (
+            <EnglishPart5Experience onExit={closeEnglishExperience} />
+          ) : (
+            <SpellingBeeExperience onExit={closeEnglishExperience} />
+          )}
         </Suspense>
       ) : null}
     </main>

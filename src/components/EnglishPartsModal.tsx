@@ -16,6 +16,9 @@ import { playBubbleSound } from '../utils/audio';
 interface EnglishPartsModalProps {
   module: RegisteredModule;
   onClose: () => void;
+  onOpenPart3: () => void;
+  onOpenPart4: () => void;
+  onOpenPart5: () => void;
   onOpenSpellingBee: () => void;
   spellingBeeEnabled: boolean;
   activationCode: string | null;
@@ -25,15 +28,18 @@ interface EnglishPartsModalProps {
 }
 
 const ENGLISH_PARTS = [
-  { number: 3, icon: BookOpen },
-  { number: 4, icon: PencilLine },
-  { number: 5, icon: Languages },
-  { number: 6, icon: Sparkles },
+  { number: 3, icon: BookOpen, title: 'Comprehension', available: true },
+  { number: 4, icon: PencilLine, title: 'Comprehension', available: true },
+  { number: 5, icon: Languages, title: 'Spelling Worksheet', available: true },
+  { number: 6, icon: Sparkles, title: 'Coming Soon', available: false },
 ];
 
 export default function EnglishPartsModal({
   module,
   onClose,
+  onOpenPart3,
+  onOpenPart4,
+  onOpenPart5,
   onOpenSpellingBee,
   spellingBeeEnabled,
   activationCode,
@@ -87,27 +93,47 @@ export default function EnglishPartsModal({
           <div className="flex flex-wrap items-start justify-center gap-x-4 gap-y-6 sm:gap-x-7 sm:gap-y-8">
             {ENGLISH_PARTS.map((part, index) => {
               const Icon = part.icon;
+              const openPart = () => {
+                if (!part.available) return;
+                playBubbleSound();
+                if (part.number === 3) onOpenPart3();
+                if (part.number === 4) onOpenPart4();
+                if (part.number === 5) onOpenPart5();
+              };
+
               return (
                 <motion.button
                   key={part.number}
+                  id={`english-part-${part.number}-button`}
                   type="button"
                   initial={{ scale: 0, opacity: 0, y: 24 }}
                   animate={{ scale: 1, opacity: 1, y: 0 }}
                   transition={{ type: 'spring', damping: 15, stiffness: 220, delay: index * 0.06 }}
-                  disabled
-                  className="flex w-[145px] cursor-not-allowed flex-col items-center rounded-3xl border-2 border-slate-200 bg-slate-100/70 p-3 text-center opacity-70 sm:w-[175px] sm:p-4"
-                  aria-label={`Part ${part.number}: Coming Soon`}
+                  whileHover={part.available ? { scale: 1.05, y: -5 } : undefined}
+                  whileTap={part.available ? { scale: 0.95 } : undefined}
+                  onClick={openPart}
+                  disabled={!part.available}
+                  className={`group flex w-[145px] flex-col items-center rounded-3xl border-2 p-3 text-center transition-colors sm:w-[175px] sm:p-4 ${
+                    part.available
+                      ? 'cursor-pointer border-sky-200 bg-white hover:border-sky-300 hover:bg-sky-50'
+                      : 'cursor-not-allowed border-slate-200 bg-slate-100/70 opacity-70'
+                  }`}
+                  aria-label={`Part ${part.number}: ${part.title}`}
                 >
-                  <div className="relative flex h-24 w-24 items-center justify-center rounded-full border-[8px] border-slate-200 bg-white shadow-lg sm:h-28 sm:w-28 sm:border-[10px]">
-                    <div className="absolute inset-0 scale-90 rounded-full bg-slate-300/20" />
+                  <div className={`relative flex h-24 w-24 items-center justify-center rounded-full border-[8px] bg-white shadow-lg sm:h-28 sm:w-28 sm:border-[10px] ${part.available ? 'border-sky-100 shadow-[0_16px_36px_rgba(59,130,246,0.24)]' : 'border-slate-200'}`}>
+                    <div className={`absolute inset-0 scale-90 rounded-full transition-transform group-hover:scale-100 ${part.available ? 'bg-sky-400/20' : 'bg-slate-300/20'}`} />
                     <div className="absolute left-2.5 top-2 h-3.5 w-7 -rotate-[28deg] rounded-full bg-gradient-to-b from-white to-transparent" />
-                    <Icon className="relative z-10 h-9 w-9 text-slate-400 sm:h-11 sm:w-11" />
-                    <div className="absolute -right-1 -top-1 flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-slate-400 text-white shadow-sm">
-                      <LockKeyhole className="h-3.5 w-3.5" />
-                    </div>
+                    <Icon className={`relative z-10 h-9 w-9 sm:h-11 sm:w-11 ${part.available ? 'text-sky-600' : 'text-slate-400'}`} />
+                    {part.available ? (
+                      <div className="absolute -right-3 -top-2 rounded-full border-2 border-white bg-emerald-500 px-2 py-0.5 text-[9px] font-black text-white shadow-sm">READY</div>
+                    ) : (
+                      <div className="absolute -right-1 -top-1 flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-slate-400 text-white shadow-sm">
+                        <LockKeyhole className="h-3.5 w-3.5" />
+                      </div>
+                    )}
                   </div>
                   <span className="mt-3 font-['Fredoka',sans-serif] text-base font-black tracking-wide text-[#78350F] sm:text-lg">PART {part.number}</span>
-                  <span className="mt-0.5 text-[10px] font-bold text-slate-500 sm:text-xs">Coming Soon</span>
+                  <span className={`mt-0.5 text-[10px] font-bold sm:text-xs ${part.available ? 'text-sky-700' : 'text-slate-500'}`}>{part.title}</span>
                 </motion.button>
               );
             })}

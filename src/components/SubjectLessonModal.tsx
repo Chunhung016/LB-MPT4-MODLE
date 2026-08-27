@@ -21,12 +21,14 @@ interface SubjectLessonModalProps {
   module: RegisteredModule | null;
   subject: SubjectDefinition | null;
   onClose: () => void;
+  sectionLabel?: string;
 }
 
 export default function SubjectLessonModal({
   module,
   subject,
   onClose,
+  sectionLabel,
 }: SubjectLessonModalProps) {
   const [currentStep, setCurrentStep] = useState<number>(0);
   const [stars, setStars] = useState<number>(3);
@@ -185,6 +187,11 @@ export default function SubjectLessonModal({
                 <span className="text-xs font-semibold text-amber-900/80">
                   {subject.secondaryName}
                 </span>
+                {sectionLabel ? (
+                  <span className="rounded-full bg-white px-2.5 py-0.5 text-[11px] font-black text-[#78350F] shadow-xs">
+                    {sectionLabel}
+                  </span>
+                ) : null}
               </div>
               <h2 className="text-2xl font-black text-[#78350F] font-['Fredoka',sans-serif] mt-0.5">
                 {subject.name} {subject.secondaryName ? `(${subject.secondaryName})` : ''}
