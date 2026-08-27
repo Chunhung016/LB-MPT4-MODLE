@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { motion } from 'motion/react';
 import { 
   ArrowLeft, 
@@ -14,6 +14,14 @@ import { SUBJECTS } from '../data/subjects';
 import PeacefulBeeBackground from './PeacefulBeeBackground';
 import { playBubbleSound } from '../utils/audio';
 import SubjectLessonModal from './SubjectLessonModal';
+import EnglishPartsModal from './EnglishPartsModal';
+import { useDeviceAccess } from '../hooks/useDeviceAccess';
+
+const SpellingBeeExperience = lazy(() =>
+  import('../features/part5/Part5Experience').then((module) => ({
+    default: module.SpellingBeeExperience,
+  })),
+);
 
 interface SubjectSelectionScreenProps {
   module: RegisteredModule;
@@ -25,6 +33,8 @@ export default function SubjectSelectionScreen({
   onBackToModules,
 }: SubjectSelectionScreenProps) {
   const [selectedSubject, setSelectedSubject] = useState<SubjectDefinition | null>(null);
+  const [isSpellingBeeOpen, setIsSpellingBeeOpen] = useState(false);
+  const deviceAccess = useDeviceAccess();
 
   const handleSubjectClick = (subj: SubjectDefinition) => {
     playBubbleSound();
@@ -186,11 +196,49 @@ export default function SubjectSelectionScreen({
       </div>
 
       {/* Subject Lesson Interactive Modal */}
-      <SubjectLessonModal
-        module={module}
-        subject={selectedSubject}
-        onClose={() => setSelectedSubject(null)}
-      />
+      {selectedSubject?.id === 'english' ? (
+        <EnglishPartsModal
+          module={module}
+          onClose={() => setSelectedSubject(null)}
+          onOpenSpellingBee={() => {
+            setSelectedSubject(null);
+            setIsSpellingBeeOpen(true);
+          }}
+          spellingBeeEnabled={deviceAccess.spellingBeeEnabled}
+          activationCode={deviceAccess.activationCode}
+          accessLoading={deviceAccess.loading}
+          accessError={deviceAccess.error}
+          onRefreshAccess={deviceAccess.refresh}
+        />
+      ) : (
+        <SubjectLessonModal
+          module={module}
+          subject={selectedSubject}
+          onClose={() => setSelectedSubject(null)}
+        />
+      )}
+
+      {isSpellingBeeOpen ? (
+        <Suspense
+          fallback={
+            <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[#FFFBEB]">
+              <div className="flex flex-col items-center gap-3 text-[#78350F]">
+                <div className="h-14 w-14 animate-bounce rounded-full border-[8px] border-sky-100 bg-white shadow-lg" />
+                <span className="font-['Fredoka',sans-serif] text-sm font-black tracking-wide">
+                  LOADING SPELLING BEE…
+                </span>
+              </div>
+            </div>
+          }
+        >
+          <SpellingBeeExperience
+            onExit={() => {
+              setIsSpellingBeeOpen(false);
+              setSelectedSubject(SUBJECTS.find((subject) => subject.id === 'english') ?? null);
+            }}
+          />
+        </Suspense>
+      ) : null}
     </main>
   );
 }
