@@ -111,7 +111,7 @@ export default function SecondScreen({
                 NO MODULE REGISTERED YET
               </h2>
               <p className="text-xs text-amber-900/80 leading-relaxed">
-                Click the <strong className="font-bold text-[#78350F]">SCAN QR MODULE</strong> button at the top right corner to register Module 1 or Module 2, or release them from Admin settings (press 'S').
+                Click the <strong className="font-bold text-[#78350F]">SCAN QR MODULE</strong> button at the top right corner to register Module 1 or Module 2.
               </p>
             </div>
           </motion.div>
