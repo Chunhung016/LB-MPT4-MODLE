@@ -5,12 +5,15 @@ import {
   KeyRound,
   LoaderCircle,
   LogOut,
+  Plus,
   RefreshCw,
   Save,
   Search,
   ShieldCheck,
   Sparkles,
+  Trash2,
   UserRound,
+  X,
 } from 'lucide-react';
 import type { Session, User } from '@supabase/supabase-js';
 import PeacefulBeeBackground from './PeacefulBeeBackground';
@@ -42,6 +45,12 @@ function hasSpellingBee(device: DeviceRow) {
   );
 }
 
+async function createDeviceTokenHash() {
+  const randomBytes = crypto.getRandomValues(new Uint8Array(32));
+  const digest = await crypto.subtle.digest('SHA-256', randomBytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
 export default function AdminPortal() {
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(false);
@@ -54,6 +63,9 @@ export default function AdminPortal() {
   const [search, setSearch] = useState('');
   const [dataError, setDataError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [showAddDevice, setShowAddDevice] = useState(false);
+  const [creatingDevice, setCreatingDevice] = useState(false);
+  const [newDevice, setNewDevice] = useState({ parentName: '', childName: '', notes: '' });
 
   const checkStaff = useCallback(async (user: User | null) => {
     if (!user) {
@@ -158,6 +170,51 @@ export default function AdminPortal() {
     setSavingId(null);
   };
 
+  const createDevice = async (event: FormEvent) => {
+    event.preventDefault();
+    setCreatingDevice(true);
+    setDataError(null);
+
+    try {
+      const tokenHash = await createDeviceTokenHash();
+      const { error } = await supabase.from('devices').insert({
+        token_hash: tokenHash,
+        parent_name: newDevice.parentName.trim() || null,
+        child_name: newDevice.childName.trim(),
+        notes: newDevice.notes.trim() || null,
+      });
+
+      if (error) {
+        setDataError(error.message);
+        return;
+      }
+
+      setNewDevice({ parentName: '', childName: '', notes: '' });
+      setShowAddDevice(false);
+      await loadDevices();
+    } catch (error) {
+      setDataError(error instanceof Error ? error.message : 'Unable to create the device record.');
+    } finally {
+      setCreatingDevice(false);
+    }
+  };
+
+  const deleteDevice = async (device: DeviceRow) => {
+    const recordName = device.child_name || device.parent_name || device.activation_code;
+    const confirmed = window.confirm(
+      `Delete ${recordName}? This permanently removes the device and its program access. This cannot be undone.`,
+    );
+    if (!confirmed) return;
+
+    setSavingId(device.id);
+    setDataError(null);
+    const { error } = await supabase.from('devices').delete().eq('id', device.id);
+
+    if (error) setDataError(error.message);
+    else setDevices((current) => current.filter((item) => item.id !== device.id));
+    setSavingId(null);
+  };
+
   const setSpellingBee = async (device: DeviceRow, active: boolean) => {
     if (!session?.user) return;
     setSavingId(device.id);
@@ -225,6 +282,57 @@ export default function AdminPortal() {
           </div>
         ) : (
           <>
+            <section className="mb-5 rounded-3xl border-2 border-amber-200 bg-white/90 p-4 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="font-['Fredoka',sans-serif] text-lg font-black">Add child/device</h2>
+                  <p className="text-xs text-slate-500">Create a record and receive a new device access code automatically.</p>
+                </div>
+                <button
+                  id="toggle-add-device-btn"
+                  type="button"
+                  onClick={() => setShowAddDevice((current) => !current)}
+                  className="flex cursor-pointer items-center gap-2 rounded-full bg-[#FBBF24] px-4 py-2.5 text-sm font-black shadow-sm hover:bg-amber-400"
+                >
+                  {showAddDevice ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                  {showAddDevice ? 'Cancel' : 'Add data'}
+                </button>
+              </div>
+
+              {showAddDevice ? (
+                <form id="add-device-form" onSubmit={createDevice} className="mt-4 grid gap-3 border-t border-amber-100 pt-4 sm:grid-cols-3">
+                  <input
+                    value={newDevice.parentName}
+                    onChange={(event) => setNewDevice((current) => ({ ...current, parentName: event.target.value }))}
+                    placeholder="Parent name"
+                    className="rounded-xl border-2 border-amber-100 px-3 py-2.5 outline-none focus:border-amber-300"
+                  />
+                  <input
+                    value={newDevice.childName}
+                    onChange={(event) => setNewDevice((current) => ({ ...current, childName: event.target.value }))}
+                    placeholder="Child name"
+                    required
+                    className="rounded-xl border-2 border-amber-100 px-3 py-2.5 outline-none focus:border-amber-300"
+                  />
+                  <input
+                    value={newDevice.notes}
+                    onChange={(event) => setNewDevice((current) => ({ ...current, notes: event.target.value }))}
+                    placeholder="Notes"
+                    className="rounded-xl border-2 border-amber-100 px-3 py-2.5 outline-none focus:border-amber-300"
+                  />
+                  <button
+                    id="create-device-btn"
+                    type="submit"
+                    disabled={creatingDevice}
+                    className="flex cursor-pointer items-center justify-center gap-2 rounded-full bg-emerald-500 px-5 py-3 text-sm font-black text-white shadow-md hover:bg-emerald-600 disabled:opacity-60 sm:col-span-3 sm:justify-self-end"
+                  >
+                    {creatingDevice ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                    Create data
+                  </button>
+                </form>
+              ) : null}
+            </section>
+
             <div className="mb-5 flex flex-wrap items-center gap-3 rounded-2xl border border-amber-200 bg-white/90 p-3 shadow-sm">
               <div className="relative min-w-[240px] flex-1">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-amber-600" />
@@ -261,11 +369,22 @@ export default function AdminPortal() {
                         <input value={device.child_name ?? ''} onChange={(event) => updateDraft(device.id, 'child_name', event.target.value)} placeholder="Child name" className="rounded-xl border-2 border-amber-100 px-3 py-2 outline-none focus:border-amber-300" />
                         <input value={device.notes ?? ''} onChange={(event) => updateDraft(device.id, 'notes', event.target.value)} placeholder="Notes" className="rounded-xl border-2 border-amber-100 px-3 py-2 outline-none focus:border-amber-300" />
                       </div>
-                      <div className="mt-3 flex items-center justify-between gap-3">
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
                         <span className="text-xs text-slate-500">Last seen {new Date(device.last_seen_at).toLocaleString()}</span>
-                        <button onClick={() => void saveDevice(device)} disabled={isSaving} className="flex cursor-pointer items-center gap-1.5 rounded-full bg-amber-100 px-4 py-2 text-xs font-black hover:bg-amber-200 disabled:opacity-60">
-                          <Save className="h-3.5 w-3.5" /> Save details
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            id={`delete-device-${device.id}`}
+                            type="button"
+                            onClick={() => void deleteDevice(device)}
+                            disabled={isSaving}
+                            className="flex cursor-pointer items-center gap-1.5 rounded-full bg-rose-100 px-4 py-2 text-xs font-black text-rose-700 hover:bg-rose-200 disabled:opacity-60"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" /> Delete data
+                          </button>
+                          <button onClick={() => void saveDevice(device)} disabled={isSaving} className="flex cursor-pointer items-center gap-1.5 rounded-full bg-amber-100 px-4 py-2 text-xs font-black hover:bg-amber-200 disabled:opacity-60">
+                            <Save className="h-3.5 w-3.5" /> Save details
+                          </button>
+                        </div>
                       </div>
                     </motion.article>
                   );
