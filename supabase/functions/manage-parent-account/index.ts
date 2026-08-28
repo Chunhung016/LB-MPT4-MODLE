@@ -25,7 +25,7 @@ function cleanText(value: unknown, maxLength: number) {
 export default {
   fetch: withSupabase({ auth: 'user' }, async (request, context) => {
     try {
-      const staffUserId = context.userClaims?.sub;
+      const staffUserId = context.userClaims?.id;
       if (!staffUserId) return Response.json({ error: 'Authentication required.' }, { status: 401 });
 
       const { data: staff, error: staffError } = await context.supabase

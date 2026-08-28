@@ -12,6 +12,7 @@ import { isSupabaseConfigured, supabase } from '../lib/supabase';
 
 const DEVICE_TOKEN_KEY = 'little_bee_device_token_v1';
 const PARENT_EMAIL_DOMAIN = 'parents.littlebee.app';
+const USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]{2,31}$/;
 
 export interface ParentProfile {
   user_id: string;
@@ -46,7 +47,15 @@ interface ParentAccountContextValue {
   actionLoading: boolean;
   error: string | null;
   configured: boolean;
+  clearError: () => void;
   signIn: (username: string, password: string) => Promise<boolean>;
+  signUp: (details: {
+    username: string;
+    password: string;
+    parentName: string;
+    childName: string;
+    contactPhone: string;
+  }) => Promise<boolean>;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
   requestActivation: (wantsSpellingBee: boolean, wantsAi: boolean) => Promise<boolean>;
@@ -82,6 +91,7 @@ function getOrCreateDeviceToken() {
 function friendlyAuthError(message: string) {
   const normalized = message.toLowerCase();
   if (normalized.includes('invalid login credentials')) return 'Incorrect username or password.';
+  if (normalized.includes('signup is disabled') || normalized.includes('signups not allowed')) return 'New account registration is temporarily unavailable. Please ask reception for help.';
   if (normalized.includes('user already registered')) return 'That username is already registered. Please sign in instead.';
   if (normalized.includes('password')) return message;
   if (normalized.includes('fetch')) return 'Unable to reach the account service. Check the internet connection and try again.';
@@ -222,6 +232,58 @@ export function ParentAccountProvider({ children }: { children: ReactNode }) {
     return true;
   }, []);
 
+  const signUp = useCallback(async ({
+    username,
+    password,
+    parentName,
+    childName,
+    contactPhone,
+  }: {
+    username: string;
+    password: string;
+    parentName: string;
+    childName: string;
+    contactPhone: string;
+  }) => {
+    const normalizedUsername = normalizeUsername(username);
+    if (!USERNAME_PATTERN.test(normalizedUsername)) {
+      setError('Username must be 3–32 characters and use only letters, numbers, dots, dashes, or underscores.');
+      return false;
+    }
+
+    setActionLoading(true);
+    setError(null);
+    const { data, error: signUpError } = await supabase.auth.signUp({
+      email: usernameToEmail(normalizedUsername),
+      password,
+      options: {
+        data: {
+          username: normalizedUsername,
+          parent_name: parentName.trim(),
+          child_name: childName.trim(),
+          contact_phone: contactPhone.trim(),
+        },
+      },
+    });
+
+    if (signUpError) {
+      setError(friendlyAuthError(signUpError.message));
+      setActionLoading(false);
+      return false;
+    }
+
+    if (!data.session) {
+      setError('Your account was created but could not be signed in automatically. Please ask reception for help.');
+      setActionLoading(false);
+      return false;
+    }
+
+    setSession(data.session);
+    await loadAccount(data.session);
+    setActionLoading(false);
+    return true;
+  }, [loadAccount]);
+
   const signOut = useCallback(async () => {
     setActionLoading(true);
     await supabase.auth.signOut();
@@ -279,7 +341,9 @@ export function ParentAccountProvider({ children }: { children: ReactNode }) {
     actionLoading,
     error,
     configured: isSupabaseConfigured,
+    clearError: () => setError(null),
     signIn,
+    signUp,
     signOut,
     refresh,
     requestActivation,
@@ -295,6 +359,7 @@ export function ParentAccountProvider({ children }: { children: ReactNode }) {
     requestActivation,
     session,
     signIn,
+    signUp,
     signOut,
     updateProfile,
   ]);
