@@ -61,6 +61,12 @@ const MathExperience = lazy(() =>
   })),
 );
 
+const SciencePart2Experience = lazy(() =>
+  import('../features/science-part2/SciencePart2Experience').then((module) => ({
+    default: module.SciencePart2Experience,
+  })),
+);
+
 type EnglishExperience = 'part3' | 'part4' | 'part5' | 'spelling-bee' | null;
 type ChineseExperience = 'part-b' | 'part-c' | null;
 
@@ -77,6 +83,7 @@ export default function SubjectSelectionScreen({
   const [activeEnglishExperience, setActiveEnglishExperience] = useState<EnglishExperience>(null);
   const [activeChineseExperience, setActiveChineseExperience] = useState<ChineseExperience>(null);
   const [activeMathExperience, setActiveMathExperience] = useState<boolean>(false);
+  const [activeScienceExperience, setActiveScienceExperience] = useState<boolean>(false);
   const [chineseLessonOpen, setChineseLessonOpen] = useState<boolean>(false);
   const [bmLessonOpen, setBmLessonOpen] = useState<boolean>(false);
   const deviceAccess = useDeviceAccess();
@@ -112,6 +119,10 @@ export default function SubjectSelectionScreen({
     setBmLessonOpen(false);
     if (subj.id === 'math') {
       setActiveMathExperience(true);
+      return;
+    }
+    if (subj.id === 'science') {
+      setActiveScienceExperience(true);
       return;
     }
     setSelectedSubject(subj);
@@ -390,6 +401,23 @@ export default function SubjectSelectionScreen({
           }
         >
           <MathExperience onExit={() => setActiveMathExperience(false)} />
+        </Suspense>
+      ) : null}
+
+      {activeScienceExperience ? (
+        <Suspense
+          fallback={
+            <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[#FFFBEB]">
+              <div className="flex flex-col items-center gap-3 text-[#78350F]">
+                <div className="h-14 w-14 animate-bounce rounded-full border-[8px] border-purple-100 bg-white shadow-lg" />
+                <span className="font-['Fredoka',sans-serif] text-sm font-black tracking-wide">
+                  正在加载科学实验…
+                </span>
+              </div>
+            </div>
+          }
+        >
+          <SciencePart2Experience onExit={() => setActiveScienceExperience(false)} />
         </Suspense>
       ) : null}
     </main>
