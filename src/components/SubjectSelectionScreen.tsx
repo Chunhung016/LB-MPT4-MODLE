@@ -15,7 +15,7 @@ import PeacefulBeeBackground from './PeacefulBeeBackground';
 import { playBubbleSound } from '../utils/audio';
 import SubjectLessonModal from './SubjectLessonModal';
 import EnglishPartsModal from './EnglishPartsModal';
-import LanguageSectionsModal from './LanguageSectionsModal';
+import ChinesePartsModal from './ChinesePartsModal';
 import { useDeviceAccess } from '../hooks/useDeviceAccess';
 
 const EnglishPart3Experience = lazy(() =>
@@ -42,7 +42,14 @@ const SpellingBeeExperience = lazy(() =>
   })),
 );
 
+const ChinesePartBExperience = lazy(() =>
+  import('../features/chinese-part-b/ChinesePartBExperience').then((module) => ({
+    default: module.ChinesePartBExperience,
+  })),
+);
+
 type EnglishExperience = 'part3' | 'part4' | 'part5' | 'spelling-bee' | null;
+type ChineseExperience = 'part-b' | null;
 
 interface SubjectSelectionScreenProps {
   module: RegisteredModule;
@@ -54,8 +61,9 @@ export default function SubjectSelectionScreen({
   onBackToModules,
 }: SubjectSelectionScreenProps) {
   const [selectedSubject, setSelectedSubject] = useState<SubjectDefinition | null>(null);
-  const [languageLessonOpen, setLanguageLessonOpen] = useState(false);
   const [activeEnglishExperience, setActiveEnglishExperience] = useState<EnglishExperience>(null);
+  const [activeChineseExperience, setActiveChineseExperience] = useState<ChineseExperience>(null);
+  const [chineseLessonOpen, setChineseLessonOpen] = useState<boolean>(false);
   const deviceAccess = useDeviceAccess();
 
   const openEnglishExperience = (experience: Exclude<EnglishExperience, null>) => {
@@ -68,13 +76,21 @@ export default function SubjectSelectionScreen({
     setSelectedSubject(SUBJECTS.find((subject) => subject.id === 'english') ?? null);
   };
 
-  const handleSubjectClick = (subj: SubjectDefinition) => {
-    playBubbleSound();
-    setLanguageLessonOpen(false);
-    setSelectedSubject(subj);
+  const openChinesePartB = () => {
+    setSelectedSubject(null);
+    setActiveChineseExperience('part-b');
   };
 
-  const isSectionedLanguage = selectedSubject?.id === 'bm' || selectedSubject?.id === 'chinese';
+  const closeChineseExperience = () => {
+    setActiveChineseExperience(null);
+    setSelectedSubject(SUBJECTS.find((subject) => subject.id === 'chinese') ?? null);
+  };
+
+  const handleSubjectClick = (subj: SubjectDefinition) => {
+    playBubbleSound();
+    setChineseLessonOpen(false);
+    setSelectedSubject(subj);
+  };
 
   const getSubjectIcon = (iconName: string, accentColor: string) => {
     switch (iconName) {
@@ -245,27 +261,28 @@ export default function SubjectSelectionScreen({
           accessError={deviceAccess.error}
           onRefreshAccess={deviceAccess.refresh}
         />
-      ) : isSectionedLanguage && !languageLessonOpen && selectedSubject ? (
-        <LanguageSectionsModal
+      ) : selectedSubject?.id === 'chinese' && !chineseLessonOpen ? (
+        <ChinesePartsModal
           module={module}
           subject={selectedSubject}
           onClose={() => setSelectedSubject(null)}
-          onOpenFirstSection={() => setLanguageLessonOpen(true)}
+          onOpenPartA={() => setChineseLessonOpen(true)}
+          onOpenPartB={openChinesePartB}
         />
-      ) : (
+      ) : selectedSubject?.id === 'chinese' && chineseLessonOpen ? (
         <SubjectLessonModal
           module={module}
           subject={selectedSubject}
-          onClose={() => {
-            if (isSectionedLanguage) {
-              setLanguageLessonOpen(false);
-              return;
-            }
-            setSelectedSubject(null);
-          }}
-          sectionLabel={selectedSubject?.id === 'bm' ? 'Bahagian A' : selectedSubject?.id === 'chinese' ? '甲组' : undefined}
+          onClose={() => setChineseLessonOpen(false)}
+          sectionLabel="甲组"
         />
-      )}
+      ) : selectedSubject ? (
+        <SubjectLessonModal
+          module={module}
+          subject={selectedSubject}
+          onClose={() => setSelectedSubject(null)}
+        />
+      ) : null}
 
       {activeEnglishExperience ? (
         <Suspense
@@ -289,6 +306,23 @@ export default function SubjectSelectionScreen({
           ) : (
             <SpellingBeeExperience onExit={closeEnglishExperience} />
           )}
+        </Suspense>
+      ) : null}
+
+      {activeChineseExperience ? (
+        <Suspense
+          fallback={
+            <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[#FFFBEB]">
+              <div className="flex flex-col items-center gap-3 text-[#78350F]">
+                <div className="h-14 w-14 animate-bounce rounded-full border-[8px] border-rose-100 bg-white shadow-lg" />
+                <span className="font-['Fredoka',sans-serif] text-sm font-black tracking-wide">
+                  正在加载华语乙组…
+                </span>
+              </div>
+            </div>
+          }
+        >
+          <ChinesePartBExperience onExit={closeChineseExperience} />
         </Suspense>
       ) : null}
     </main>
