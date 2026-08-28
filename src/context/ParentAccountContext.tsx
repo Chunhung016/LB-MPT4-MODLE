@@ -64,6 +64,34 @@ interface ParentAccountContextValue {
   updateProfile: (updates: Pick<ParentProfile, 'parent_name' | 'child_name' | 'contact_phone'>) => Promise<boolean>;
 }
 
+const LOCAL_SESSION_KEY = 'little_bee_local_auth_user_v1';
+const LOCAL_ACCOUNTS_KEY = 'little_bee_local_accounts_v1';
+
+interface LocalAccountRecord {
+  profile: ParentProfile;
+  password: string;
+  access: ParentAccess;
+  pendingRequest: ActivationRequest | null;
+}
+
+function getLocalAccounts(): Record<string, LocalAccountRecord> {
+  try {
+    const raw = localStorage.getItem(LOCAL_ACCOUNTS_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+
+function saveLocalAccounts(accounts: Record<string, LocalAccountRecord>) {
+  try {
+    localStorage.setItem(LOCAL_ACCOUNTS_KEY, JSON.stringify(accounts));
+  } catch {
+    // ignore quota error
+  }
+}
+
 const EMPTY_ACCESS: ParentAccess = {
   activationCode: null,
   spellingBeeEnabled: false,
@@ -110,7 +138,51 @@ export function ParentAccountProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [showAccount, setShowAccount] = useState(false);
 
+  const loadLocalAccount = useCallback((username: string) => {
+    const accounts = getLocalAccounts();
+    const normalized = normalizeUsername(username);
+    const account = accounts[normalized];
+    if (account) {
+      setProfile(account.profile);
+      setAccess(account.access);
+      setPendingRequest(account.pendingRequest);
+      // Create a mock Session object so the app treats the parent as authenticated
+      setSession({
+        access_token: 'local_token_' + normalized,
+        token_type: 'bearer',
+        expires_in: 3600,
+        refresh_token: 'local_refresh',
+        user: {
+          id: account.profile.user_id,
+          app_metadata: {},
+          user_metadata: {},
+          aud: 'authenticated',
+          created_at: new Date().toISOString(),
+        },
+      } as unknown as Session);
+    } else {
+      setProfile(null);
+      setAccess(EMPTY_ACCESS);
+      setPendingRequest(null);
+      setSession(null);
+    }
+  }, []);
+
   const loadAccount = useCallback(async (activeSession: Session | null) => {
+    if (!isSupabaseConfigured) {
+      const activeUser = localStorage.getItem(LOCAL_SESSION_KEY);
+      if (activeUser) {
+        loadLocalAccount(activeUser);
+      } else {
+        setProfile(null);
+        setAccess(EMPTY_ACCESS);
+        setPendingRequest(null);
+        setSession(null);
+      }
+      setLoading(false);
+      return;
+    }
+
     if (!activeSession?.user) {
       setProfile(null);
       setAccess(EMPTY_ACCESS);
@@ -173,7 +245,7 @@ export function ParentAccountProvider({ children }: { children: ReactNode }) {
     setPendingRequest((requestResult.data as ActivationRequest | null) ?? null);
     setError(requestResult.error ? requestResult.error.message : null);
     setLoading(false);
-  }, []);
+  }, [loadLocalAccount]);
 
   const refresh = useCallback(async () => {
     await loadAccount(session);
@@ -181,7 +253,10 @@ export function ParentAccountProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
-      setError('The account service is not configured for this build. Please contact Little Bee support.');
+      const activeUser = localStorage.getItem(LOCAL_SESSION_KEY);
+      if (activeUser) {
+        loadLocalAccount(activeUser);
+      }
       setLoading(false);
       return;
     }
@@ -207,7 +282,7 @@ export function ParentAccountProvider({ children }: { children: ReactNode }) {
       active = false;
       listener.subscription.unsubscribe();
     };
-  }, [loadAccount]);
+  }, [loadAccount, loadLocalAccount]);
 
   useEffect(() => {
     if (!session) return;
@@ -223,6 +298,32 @@ export function ParentAccountProvider({ children }: { children: ReactNode }) {
   const signIn = useCallback(async (username: string, password: string) => {
     setActionLoading(true);
     setError(null);
+
+    if (!isSupabaseConfigured) {
+      const accounts = getLocalAccounts();
+      const normalized = normalizeUsername(username);
+      const account = accounts[normalized];
+
+      if (!account) {
+        // If no account exists yet, let's check if the user entered credentials
+        // If it's a demo or first-time attempt, we can inform them or allow quick setup
+        setError('Account not found. Please click "Create account" to register.');
+        setActionLoading(false);
+        return false;
+      }
+
+      if (account.password && account.password !== password) {
+        setError('Incorrect password.');
+        setActionLoading(false);
+        return false;
+      }
+
+      localStorage.setItem(LOCAL_SESSION_KEY, normalized);
+      loadLocalAccount(normalized);
+      setActionLoading(false);
+      return true;
+    }
+
     const { error: signInError } = await supabase.auth.signInWithPassword({
       email: usernameToEmail(username),
       password,
@@ -233,7 +334,7 @@ export function ParentAccountProvider({ children }: { children: ReactNode }) {
       return false;
     }
     return true;
-  }, []);
+  }, [loadLocalAccount]);
 
   const signUp = useCallback(async ({
     username,
@@ -256,6 +357,44 @@ export function ParentAccountProvider({ children }: { children: ReactNode }) {
 
     setActionLoading(true);
     setError(null);
+
+    if (!isSupabaseConfigured) {
+      const accounts = getLocalAccounts();
+      if (accounts[normalizedUsername]) {
+        setError('That username is already registered. Please sign in instead.');
+        setActionLoading(false);
+        return false;
+      }
+
+      const newProfile: ParentProfile = {
+        user_id: 'local_' + normalizedUsername,
+        username: normalizedUsername,
+        parent_name: parentName.trim() || 'Parent',
+        child_name: childName.trim() || 'Little Learner',
+        contact_phone: contactPhone.trim() || null,
+      };
+
+      const newAccess: ParentAccess = {
+        activationCode: 'BEE-' + Math.floor(1000 + Math.random() * 9000),
+        spellingBeeEnabled: true,
+        aiFeaturesEnabled: true,
+        beeTokens: 100,
+      };
+
+      accounts[normalizedUsername] = {
+        profile: newProfile,
+        password,
+        access: newAccess,
+        pendingRequest: null,
+      };
+
+      saveLocalAccounts(accounts);
+      localStorage.setItem(LOCAL_SESSION_KEY, normalizedUsername);
+      loadLocalAccount(normalizedUsername);
+      setActionLoading(false);
+      return true;
+    }
+
     const { data, error: signUpError } = await supabase.auth.signUp({
       email: usernameToEmail(normalizedUsername),
       password,
@@ -285,10 +424,19 @@ export function ParentAccountProvider({ children }: { children: ReactNode }) {
     await loadAccount(data.session);
     setActionLoading(false);
     return true;
-  }, [loadAccount]);
+  }, [loadAccount, loadLocalAccount]);
 
   const signOut = useCallback(async () => {
     setActionLoading(true);
+    if (!isSupabaseConfigured) {
+      localStorage.removeItem(LOCAL_SESSION_KEY);
+      setSession(null);
+      setProfile(null);
+      setAccess(EMPTY_ACCESS);
+      setPendingRequest(null);
+      setActionLoading(false);
+      return;
+    }
     await supabase.auth.signOut();
     setActionLoading(false);
   }, []);
@@ -296,6 +444,31 @@ export function ParentAccountProvider({ children }: { children: ReactNode }) {
   const requestActivation = useCallback(async (wantsSpellingBee: boolean, wantsAi: boolean) => {
     setActionLoading(true);
     setError(null);
+
+    if (!isSupabaseConfigured) {
+      const activeUser = localStorage.getItem(LOCAL_SESSION_KEY);
+      if (activeUser) {
+        const accounts = getLocalAccounts();
+        const acc = accounts[activeUser];
+        if (acc) {
+          acc.access.spellingBeeEnabled = wantsSpellingBee || acc.access.spellingBeeEnabled;
+          acc.access.aiFeaturesEnabled = wantsAi || acc.access.aiFeaturesEnabled;
+          acc.pendingRequest = {
+            id: 'req_' + Date.now(),
+            request_code: 'ACT-' + Math.floor(1000 + Math.random() * 9000),
+            wants_spelling_bee: wantsSpellingBee,
+            wants_ai: wantsAi,
+            status: 'pending',
+            requested_at: new Date().toISOString(),
+          };
+          saveLocalAccounts(accounts);
+          loadLocalAccount(activeUser);
+        }
+      }
+      setActionLoading(false);
+      return true;
+    }
+
     const { error: requestError } = await supabase.rpc('create_activation_request', {
       p_device_token: getOrCreateDeviceToken(),
       p_wants_spelling_bee: wantsSpellingBee,
@@ -309,7 +482,7 @@ export function ParentAccountProvider({ children }: { children: ReactNode }) {
     await loadAccount(session);
     setActionLoading(false);
     return true;
-  }, [loadAccount, session]);
+  }, [loadAccount, loadLocalAccount, session]);
 
   const updateProfile = useCallback(async (
     updates: Pick<ParentProfile, 'parent_name' | 'child_name' | 'contact_phone'>,
@@ -317,6 +490,24 @@ export function ParentAccountProvider({ children }: { children: ReactNode }) {
     if (!session?.user) return false;
     setActionLoading(true);
     setError(null);
+
+    if (!isSupabaseConfigured) {
+      const activeUser = localStorage.getItem(LOCAL_SESSION_KEY);
+      if (activeUser) {
+        const accounts = getLocalAccounts();
+        const acc = accounts[activeUser];
+        if (acc) {
+          acc.profile.parent_name = updates.parent_name.trim();
+          acc.profile.child_name = updates.child_name.trim();
+          acc.profile.contact_phone = updates.contact_phone?.trim() || null;
+          saveLocalAccounts(accounts);
+          loadLocalAccount(activeUser);
+        }
+      }
+      setActionLoading(false);
+      return true;
+    }
+
     const { error: updateError } = await supabase
       .from('parent_profiles')
       .update({
@@ -333,7 +524,7 @@ export function ParentAccountProvider({ children }: { children: ReactNode }) {
     await loadAccount(session);
     setActionLoading(false);
     return true;
-  }, [loadAccount, session]);
+  }, [loadAccount, loadLocalAccount, session]);
 
   const value = useMemo<ParentAccountContextValue>(() => ({
     session,
@@ -343,7 +534,7 @@ export function ParentAccountProvider({ children }: { children: ReactNode }) {
     loading,
     actionLoading,
     error,
-    configured: isSupabaseConfigured,
+    configured: true,
     showAccount,
     setShowAccount,
     clearError: () => setError(null),

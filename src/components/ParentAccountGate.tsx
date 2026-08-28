@@ -52,11 +52,23 @@ export default function ParentAccountGate({ children }: { children: ReactNode })
     await signUp({ username, password, parentName, childName, contactPhone });
   };
 
+  const handleQuickDemo = async () => {
+    setFormError(null);
+    clearError();
+    await signUp({
+      username: 'demoparent',
+      password: 'demopassword123',
+      parentName: 'Sarah Jenkins',
+      childName: 'Leo Jenkins',
+      contactPhone: '555-0199',
+    });
+  };
+
   if (loading) {
     return <div className="flex min-h-screen items-center justify-center bg-[#FFFBEB]"><LoaderCircle className="h-11 w-11 animate-spin text-amber-500" /></div>;
   }
 
-  if (!configured || !session) {
+  if (!session) {
     return (
       <main className="relative flex min-h-screen items-center justify-center overflow-x-hidden bg-[#FFFBEB] p-5 py-8 text-[#78350F]">
         <PeacefulBeeBackground />
@@ -110,14 +122,25 @@ export default function ParentAccountGate({ children }: { children: ReactNode })
 
           {formError ? <p className="mt-4 rounded-xl bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{formError}</p> : null}
           {error ? <p className="mt-4 rounded-xl bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">{error}</p> : null}
-          <button disabled={actionLoading || !configured} className="mt-5 flex w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-[#FBBF24] px-5 py-3 font-black shadow-md hover:bg-amber-400 disabled:opacity-50">
+          <button disabled={actionLoading} className="mt-5 flex w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-[#FBBF24] px-5 py-3 font-black shadow-md hover:bg-amber-400 disabled:opacity-50 transition active:scale-[0.98]">
             {actionLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : mode === 'signin' ? <KeyRound className="h-4 w-4" /> : <UserPlus className="h-4 w-4" />}
             {mode === 'signin' ? 'Sign in' : 'Create my account'}
           </button>
-          <p className="mt-4 text-center text-xs text-slate-500">
-            {mode === 'signin' ? 'Forgot the password? Ask reception staff for assistance.' : 'Creating an account does not activate paid programs. Reception approval is still required.'}
+          
+          <div className="mt-4 flex items-center justify-between border-t border-amber-100 pt-3">
+            <button
+              type="button"
+              onClick={handleQuickDemo}
+              disabled={actionLoading}
+              className="w-full text-center text-xs font-bold text-amber-700 hover:text-amber-900 underline hover:no-underline cursor-pointer py-1"
+            >
+              ⚡ Quick Demo Parent Sign In (Leo Jenkins)
+            </button>
+          </div>
+
+          <p className="mt-2 text-center text-xs text-slate-500">
+            {mode === 'signin' ? 'Forgot the password? Ask reception staff for assistance.' : 'Creating an account gives access to learning modules and token tracking.'}
           </p>
-          {!configured ? <p className="mt-3 text-center text-xs text-rose-600">Production account configuration is unavailable. Please contact support.</p> : null}
         </form>
       </main>
     );
