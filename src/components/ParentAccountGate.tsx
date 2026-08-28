@@ -1,13 +1,26 @@
 import { FormEvent, ReactNode, useEffect, useState } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
-import { Coins, KeyRound, LoaderCircle, LogOut, UserPlus, UserRound } from 'lucide-react';
+import { KeyRound, LoaderCircle, LogOut, UserPlus, UserRound } from 'lucide-react';
 import PeacefulBeeBackground from './PeacefulBeeBackground';
 import ActivationCenter from './ActivationCenter';
 import { useParentAccount } from '../context/ParentAccountContext';
 
 export default function ParentAccountGate({ children }: { children: ReactNode }) {
-  const { session, profile, access, pendingRequest, loading, actionLoading, error, configured, clearError, signIn, signUp, signOut } = useParentAccount();
-  const [showAccount, setShowAccount] = useState(false);
+  const {
+    session,
+    profile,
+    access,
+    pendingRequest,
+    loading,
+    actionLoading,
+    error,
+    configured,
+    showAccount,
+    setShowAccount,
+    clearError,
+    signIn,
+    signUp,
+    signOut,
+  } = useParentAccount();
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -21,7 +34,7 @@ export default function ParentAccountGate({ children }: { children: ReactNode })
     if (profile && !access.spellingBeeEnabled && !access.aiFeaturesEnabled && !pendingRequest) {
       setShowAccount(true);
     }
-  }, [access.aiFeaturesEnabled, access.spellingBeeEnabled, pendingRequest, profile]);
+  }, [access.aiFeaturesEnabled, access.spellingBeeEnabled, pendingRequest, profile, setShowAccount]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -125,23 +138,5 @@ export default function ParentAccountGate({ children }: { children: ReactNode })
 
   if (showAccount) return <ActivationCenter onContinue={() => setShowAccount(false)} />;
 
-  return (
-    <>
-      {children}
-      <AnimatePresence>
-        <motion.button
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          type="button"
-          onClick={() => setShowAccount(true)}
-          className="fixed right-4 top-4 z-40 flex cursor-pointer items-center gap-2 rounded-full border-2 border-white bg-[#FBBF24] px-4 py-2.5 font-['Fredoka',sans-serif] text-sm font-black text-[#78350F] shadow-xl hover:bg-amber-400"
-          aria-label="Open account and activation settings"
-        >
-          <Coins className="h-5 w-5" />
-          <span>{access.beeTokens.toLocaleString()} Bee Tokens</span>
-          <span className="hidden rounded-full bg-white/70 px-2 py-0.5 text-[10px] sm:inline">ACCOUNT</span>
-        </motion.button>
-      </AnimatePresence>
-    </>
-  );
+  return <>{children}</>;
 }

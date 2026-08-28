@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { Coins } from 'lucide-react';
 import PeacefulBeeBackground from './components/PeacefulBeeBackground';
 import PlayBubbleButton from './components/PlayBubbleButton';
 import LogicSettingsModal from './components/LogicSettingsModal';
@@ -9,7 +10,7 @@ import QRScannerModal from './components/QRScannerModal';
 import { LogicConfig, RegisteredModule } from './types';
 import AdminPortal from './components/AdminPortal';
 import ParentAccountGate from './components/ParentAccountGate';
-import { ParentAccountProvider } from './context/ParentAccountContext';
+import { ParentAccountProvider, useParentAccount } from './context/ParentAccountContext';
 
 const DEFAULT_CONFIG: LogicConfig = {
   systemVersion: 'MPT4-2026.1.0',
@@ -77,6 +78,7 @@ const DEFAULT_CONFIG: LogicConfig = {
 };
 
 function WorksheetApp() {
+  const { profile, access, setShowAccount } = useParentAccount();
   const [currentScreen, setCurrentScreen] = useState<'home' | 'secondScreen' | 'subjects'>('home');
   const [activeSelectedModule, setActiveSelectedModule] = useState<RegisteredModule | null>(null);
   const [isQRScannerOpen, setIsQRScannerOpen] = useState(false);
@@ -166,6 +168,22 @@ function WorksheetApp() {
           >
             {/* Peaceful Vibrant theme background */}
             <PeacefulBeeBackground />
+
+            {/* Top Right: Bee Token / Account button (Displayed ONLY on 1st Page) */}
+            {profile && (
+              <motion.button
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                type="button"
+                onClick={() => setShowAccount(true)}
+                className="fixed right-4 top-4 z-40 flex cursor-pointer items-center gap-2 rounded-full border-2 border-white bg-[#FBBF24] px-4 py-2.5 font-['Fredoka',sans-serif] text-sm font-black text-[#78350F] shadow-xl hover:bg-amber-400 active:scale-95 transition"
+                aria-label="Open account and activation settings"
+              >
+                <Coins className="h-5 w-5" />
+                <span>{access.beeTokens.toLocaleString()} Bee Tokens</span>
+                <span className="hidden rounded-full bg-white/70 px-2 py-0.5 text-[10px] sm:inline">ACCOUNT</span>
+              </motion.button>
+            )}
 
             {/* Centerpiece container evenly balanced on screen */}
             <div 

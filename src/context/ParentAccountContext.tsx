@@ -47,6 +47,8 @@ interface ParentAccountContextValue {
   actionLoading: boolean;
   error: string | null;
   configured: boolean;
+  showAccount: boolean;
+  setShowAccount: (show: boolean) => void;
   clearError: () => void;
   signIn: (username: string, password: string) => Promise<boolean>;
   signUp: (details: {
@@ -106,6 +108,7 @@ export function ParentAccountProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showAccount, setShowAccount] = useState(false);
 
   const loadAccount = useCallback(async (activeSession: Session | null) => {
     if (!activeSession?.user) {
@@ -341,6 +344,8 @@ export function ParentAccountProvider({ children }: { children: ReactNode }) {
     actionLoading,
     error,
     configured: isSupabaseConfigured,
+    showAccount,
+    setShowAccount,
     clearError: () => setError(null),
     signIn,
     signUp,
@@ -358,6 +363,8 @@ export function ParentAccountProvider({ children }: { children: ReactNode }) {
     refresh,
     requestActivation,
     session,
+    showAccount,
+    setShowAccount,
     signIn,
     signUp,
     signOut,
