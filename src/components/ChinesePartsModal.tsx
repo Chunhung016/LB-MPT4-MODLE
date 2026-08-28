@@ -17,6 +17,7 @@ interface ChinesePartsModalProps {
   onClose: () => void;
   onOpenPartA: () => void;
   onOpenPartB: () => void;
+  onOpenPartC: () => void;
   activationCode?: string | null;
   accessLoading?: boolean;
   accessError?: string | null;
@@ -24,9 +25,9 @@ interface ChinesePartsModalProps {
 }
 
 const CHINESE_PARTS = [
-  { id: 'yi', label: '乙组', sublabel: '阅读理解', icon: PencilLine, available: true, url: undefined },
-  { id: 'bing', label: '丙组', sublabel: '供料作文', icon: Languages, available: true, url: 'https://github.com/Chunhung016/WORKSHEET_gongliaozuowen' },
-  { id: 'ding', label: '丁组', sublabel: '命题作文', icon: Sparkles, available: false, url: undefined },
+  { id: 'yi', label: '乙组', sublabel: '阅读理解', icon: PencilLine, available: true },
+  { id: 'bing', label: '丙组', sublabel: '供料作文', icon: Languages, available: true },
+  { id: 'ding', label: '丁组', sublabel: '命题作文', icon: Sparkles, available: false },
 ];
 
 export default function ChinesePartsModal({
@@ -34,6 +35,7 @@ export default function ChinesePartsModal({
   onClose,
   onOpenPartA,
   onOpenPartB,
+  onOpenPartC,
   activationCode,
   accessLoading = false,
   accessError,
@@ -90,8 +92,8 @@ export default function ChinesePartsModal({
               const openPart = () => {
                 if (!part.available) return;
                 playBubbleSound();
-                if (part.url) {
-                  window.open(part.url, '_blank');
+                if (part.id === 'bing') {
+                  onOpenPartC();
                 } else if (part.id === 'yi') {
                   onOpenPartB();
                 }
@@ -136,7 +138,7 @@ export default function ChinesePartsModal({
                     />
                     {part.available ? (
                       <div className="absolute -right-3 -top-2 rounded-full border-2 border-white bg-emerald-500 px-2 py-0.5 text-[9px] font-black text-white shadow-sm animate-pulse">
-                        {part.id === 'bing' ? '前往' : '已解锁'}
+                        已解锁
                       </div>
                     ) : (
                       <div className="absolute -right-1 -top-1 flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-slate-400 text-white shadow-sm">

@@ -49,6 +49,12 @@ const ChinesePartBExperience = lazy(() =>
   })),
 );
 
+const ChinesePartCExperience = lazy(() =>
+  import('../features/chinese-part-c/ChinesePartCExperience').then((module) => ({
+    default: module.ChinesePartCExperience,
+  })),
+);
+
 const MathExperience = lazy(() =>
   import('../features/math/MathExperience').then((module) => ({
     default: module.MathExperience,
@@ -56,7 +62,7 @@ const MathExperience = lazy(() =>
 );
 
 type EnglishExperience = 'part3' | 'part4' | 'part5' | 'spelling-bee' | null;
-type ChineseExperience = 'part-b' | null;
+type ChineseExperience = 'part-b' | 'part-c' | null;
 
 interface SubjectSelectionScreenProps {
   module: RegisteredModule;
@@ -88,6 +94,11 @@ export default function SubjectSelectionScreen({
   const openChinesePartB = () => {
     setSelectedSubject(null);
     setActiveChineseExperience('part-b');
+  };
+
+  const openChinesePartC = () => {
+    setSelectedSubject(null);
+    setActiveChineseExperience('part-c');
   };
 
   const closeChineseExperience = () => {
@@ -281,6 +292,7 @@ export default function SubjectSelectionScreen({
           onClose={() => setSelectedSubject(null)}
           onOpenPartA={() => setChineseLessonOpen(true)}
           onOpenPartB={openChinesePartB}
+          onOpenPartC={openChinesePartC}
           activationCode={deviceAccess.activationCode}
           accessLoading={deviceAccess.loading}
           accessError={deviceAccess.error}
@@ -350,13 +362,17 @@ export default function SubjectSelectionScreen({
               <div className="flex flex-col items-center gap-3 text-[#78350F]">
                 <div className="h-14 w-14 animate-bounce rounded-full border-[8px] border-rose-100 bg-white shadow-lg" />
                 <span className="font-['Fredoka',sans-serif] text-sm font-black tracking-wide">
-                  正在加载华语乙组…
+                  正在加载华语组别…
                 </span>
               </div>
             </div>
           }
         >
-          <ChinesePartBExperience onExit={closeChineseExperience} />
+          {activeChineseExperience === 'part-b' ? (
+            <ChinesePartBExperience onExit={closeChineseExperience} />
+          ) : (
+            <ChinesePartCExperience onExit={closeChineseExperience} />
+          )}
         </Suspense>
       ) : null}
 
