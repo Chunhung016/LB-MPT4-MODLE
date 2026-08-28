@@ -3,6 +3,7 @@ import { AdminDashboard } from './components/AdminDashboard';
 import { HoneycombBackground } from './components/HoneycombBackground';
 import { MistakeBookScreen } from './components/MistakeBookScreen';
 import { ModeSelectionScreen } from './components/ModeSelectionScreen';
+import { LeaderboardScreen } from './components/LeaderboardScreen';
 import { Screen2 } from './components/Screen2';
 import { Screen3 } from './components/Screen3';
 import { AppProvider, useApp } from './context/AppContext';
@@ -40,6 +41,26 @@ function SpellingBeeContent({ onExit }: SpellingBeeExperienceProps) {
                   setCurrentScreen('screen2');
                 }}
                 onSelectMistakeBook={() => setCurrentScreen('mistake_book')}
+                onSelectLeaderboard={() => setCurrentScreen('leaderboard')}
+              />
+            </motion.div>
+          )}
+
+          {currentScreen === 'leaderboard' && (
+            <motion.div
+              key="leaderboard"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.3, ease: 'easeInOut' }}
+              className="flex flex-1 flex-col"
+            >
+              <LeaderboardScreen
+                onBack={() => setCurrentScreen('menu')}
+                onPlayNow={() => {
+                  setIsPracticingMistakes(false);
+                  setCurrentScreen('screen2');
+                }}
               />
             </motion.div>
           )}

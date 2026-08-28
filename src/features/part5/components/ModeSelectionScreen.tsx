@@ -10,6 +10,7 @@ import {
   Flame,
   AlertCircle,
   CheckCircle2,
+  Trophy,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { sound } from '../utils/audio';
@@ -19,12 +20,14 @@ interface ModeSelectionScreenProps {
   onBack: () => void;
   onSelectPractice: () => void;
   onSelectMistakeBook: () => void;
+  onSelectLeaderboard: () => void;
 }
 
 export const ModeSelectionScreen: React.FC<ModeSelectionScreenProps> = ({
   onBack,
   onSelectPractice,
   onSelectMistakeBook,
+  onSelectLeaderboard,
 }) => {
   const { settings, updateSettings, mistakes } = useApp();
 
@@ -56,6 +59,11 @@ export const ModeSelectionScreen: React.FC<ModeSelectionScreenProps> = ({
   const handleMistakeBookClick = () => {
     sound.playPop();
     onSelectMistakeBook();
+  };
+
+  const handleLeaderboardClick = () => {
+    sound.playPop();
+    onSelectLeaderboard();
   };
 
   return (
@@ -101,6 +109,16 @@ export const ModeSelectionScreen: React.FC<ModeSelectionScreenProps> = ({
 
         <div className="flex items-center gap-2 sm:gap-3">
           <button
+            id="btn-leaderboard-header"
+            onClick={handleLeaderboardClick}
+            className="px-3.5 py-1.5 bg-amber-100 hover:bg-amber-200 rounded-full border-2 border-[#78350F] text-[#78350F] font-black text-xs sm:text-sm shadow-[1.5px_1.5px_0px_#78350F] transition-all flex items-center gap-1.5 cursor-pointer active:translate-y-0.5"
+            title="View Spelling Bee Leaderboard"
+          >
+            <Trophy className="w-4 h-4 text-amber-600" />
+            <span>Leaderboard</span>
+          </button>
+
+          <button
             id="btn-sound-toggle-mode"
             onClick={handleToggleMute}
             className="p-1.5 sm:p-2 bg-white rounded-full border-2 border-[#78350F] text-[#78350F] shadow-[1.5px_1.5px_0px_#78350F] transition-all hover:bg-[#FFFBEB] cursor-pointer active:scale-95"
@@ -115,13 +133,13 @@ export const ModeSelectionScreen: React.FC<ModeSelectionScreenProps> = ({
         </div>
       </header>
 
-      {/* Main Center Content: 2 Big Square Buttons */}
+      {/* Main Center Content: 2 Big Square Buttons + Leaderboard Banner */}
       <main className="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-8 flex flex-col items-center justify-center z-10 relative">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          className="text-center mb-8 sm:mb-12"
+          className="text-center mb-8 sm:mb-10"
         >
           <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-amber-100/90 rounded-full border-2 border-[#78350F] text-xs font-black text-[#78350F] shadow-xs mb-3">
             <Sparkles className="w-4 h-4 text-amber-600" />
@@ -131,12 +149,12 @@ export const ModeSelectionScreen: React.FC<ModeSelectionScreenProps> = ({
             What Would You Like To Do?
           </h1>
           <p className="text-sm sm:text-base font-bold text-[#92400E] mt-2 max-w-md mx-auto">
-            Practice spelling with 1-attempt challenge, or review unmastered words in your Mistake Book!
+            Practice spelling with 1-attempt challenge, review unmastered words in your Mistake Book, or check the Champions Leaderboard!
           </p>
         </motion.div>
 
         {/* 2 Square Buttons in the Middle */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-10 w-full max-w-3xl justify-items-center">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8 w-full max-w-3xl justify-items-center">
           {/* Button 1: Practice */}
           <motion.button
             id="btn-mode-practice"
@@ -203,6 +221,39 @@ export const ModeSelectionScreen: React.FC<ModeSelectionScreenProps> = ({
             </div>
           </motion.button>
         </div>
+
+        {/* Button 3: Wide Leaderboard Banner */}
+        <motion.button
+          id="btn-mode-leaderboard"
+          onClick={handleLeaderboardClick}
+          whileHover={{ scale: 1.02, y: -2 }}
+          whileTap={{ scale: 0.98, y: 1 }}
+          className="mt-6 w-full max-w-3xl bg-gradient-to-r from-amber-300 via-yellow-200 to-amber-300 hover:from-amber-400 hover:to-yellow-300 rounded-2xl border-4 border-[#78350F] p-4 sm:p-5 shadow-[4px_6px_0px_#78350F] flex items-center justify-between cursor-pointer transition-all"
+        >
+          <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-xl bg-white border-2 border-[#78350F] flex items-center justify-center shadow-xs text-2xl">
+              🏆
+            </div>
+            <div className="text-left">
+              <div className="flex items-center gap-2">
+                <span className="text-base sm:text-lg font-black text-[#78350F] uppercase">
+                  Spelling Bee Leaderboard
+                </span>
+                <span className="px-2 py-0.5 bg-amber-500 text-white rounded-full text-[10px] font-black uppercase">
+                  Rankings
+                </span>
+              </div>
+              <p className="text-xs font-bold text-[#92400E]">
+                See who scored the highest points and climb to the #1 podium!
+              </p>
+            </div>
+          </div>
+
+          <div className="hidden sm:flex items-center gap-1.5 px-4 py-2 bg-white rounded-xl border-2 border-[#78350F] font-black text-xs text-[#78350F] shadow-2xs">
+            <span>View Hall of Fame</span>
+            <Trophy className="w-3.5 h-3.5 text-amber-600" />
+          </div>
+        </motion.button>
       </main>
 
       <div className="h-6" />

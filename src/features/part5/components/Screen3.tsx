@@ -17,6 +17,9 @@ import {
   Flame,
   Keyboard,
   BookMarked,
+  Star,
+  Award,
+  User,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { SpellingWord } from '../data/theme1Words';
@@ -24,6 +27,8 @@ import { getThemeById, getThemeWords } from '../data/allThemes';
 import { useApp } from '../context/AppContext';
 import { sound } from '../utils/audio';
 import { VoiceSettingsPanel } from './VoiceSettingsPanel';
+import { calculateGameScore, submitGameScore, LeaderboardEntry } from '../utils/leaderboardStore';
+import { useParentAccount } from '../../../context/ParentAccountContext';
 
 interface Screen3Props {
   onBack: () => void;
@@ -79,7 +84,15 @@ export const Screen3: React.FC<Screen3Props> = ({
     activeMistakeWordIndex,
     recordMistake,
     markWordMastered,
+    setCurrentScreen,
   } = useApp();
+
+  const { profile } = useParentAccount();
+  const childDisplayName = profile?.childName?.trim() || 'Learner';
+
+  const [finalScore, setFinalScore] = useState<number>(0);
+  const [submittedScoreEntry, setSubmittedScoreEntry] = useState<LeaderboardEntry | null>(null);
+  const [isSubmittingScore, setIsSubmittingScore] = useState<boolean>(false);
 
   const themeInfo = getThemeById(selectedThemeId);
 
@@ -316,6 +329,38 @@ export const Screen3: React.FC<Screen3Props> = ({
       triggerMistakeRecord('time_out');
     }
   }, [timeLeft, attemptUsed, isCorrect, showPhonicsModal, flyingWord, currentWord, isFinished, triggerMistakeRecord]);
+
+  // Calculate and submit game score to Leaderboard when game completes
+  useEffect(() => {
+    if (isFinished && words.length > 0) {
+      const calculatedScore = calculateGameScore(
+        completedQuestions.size,
+        words.length,
+        maxStreak,
+        elapsedSeconds
+      );
+      setFinalScore(calculatedScore);
+      setIsSubmittingScore(true);
+
+      const themeDisplayName = isPracticingMistakes ? 'Mistake Book' : `${themeInfo.title}: ${themeInfo.name}`;
+
+      submitGameScore({
+        child_name: childDisplayName,
+        theme_name: themeDisplayName,
+        score: calculatedScore,
+        mastered_count: completedQuestions.size,
+        total_questions: words.length,
+        max_streak: maxStreak,
+        time_seconds: elapsedSeconds,
+      })
+        .then((entry) => {
+          setSubmittedScoreEntry(entry);
+        })
+        .finally(() => {
+          setIsSubmittingScore(false);
+        });
+    }
+  }, [isFinished, completedQuestions.size, words.length, maxStreak, elapsedSeconds, isPracticingMistakes, childDisplayName, themeInfo.title, themeInfo.name]);
 
   // Check answer automatically on 1 attempt
   const handleValidateAnswer = useCallback(
@@ -868,6 +913,19 @@ export const Screen3: React.FC<Screen3Props> = ({
           </motion.div>
 
           <button
+            id="btn-leaderboard-screen3"
+            onClick={() => {
+              sound.playPop();
+              setCurrentScreen('leaderboard');
+            }}
+            className="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 rounded-full border-2 border-[#78350F] text-[#78350F] font-black text-xs shadow-[1.5px_1.5px_0px_#78350F] transition-all flex items-center gap-1.5 cursor-pointer active:translate-y-0.5"
+            title="Spelling Bee Leaderboard"
+          >
+            <Trophy className="w-3.5 h-3.5 text-amber-600" />
+            <span className="hidden sm:inline">Leaderboard</span>
+          </button>
+
+          <button
             id="btn-sound-toggle-screen3"
             onClick={handleToggleMute}
             className="p-1.5 sm:p-2 bg-white rounded-full border-2 border-[#78350F] text-[#78350F] shadow-[2px_2px_0px_#78350F] transition-all hover:bg-[#FEF3C7] cursor-pointer"
@@ -1237,114 +1295,165 @@ export const Screen3: React.FC<Screen3Props> = ({
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="bg-white/95 rounded-3xl border-4 border-[#78350F] p-8 sm:p-12 shadow-[6px_8px_0px_#78350F] flex flex-col items-center text-center gap-6 max-w-lg w-full"
+              className="bg-white/95 rounded-3xl border-4 border-[#78350F] p-6 sm:p-10 shadow-[6px_8px_0px_#78350F] flex flex-col items-center text-center gap-5 max-w-lg w-full"
             >
-              <div className="w-20 h-20 bg-gradient-to-tr from-amber-400 to-yellow-300 rounded-full border-4 border-[#78350F] flex items-center justify-center shadow-md">
-                <Trophy className="w-10 h-10 text-[#78350F]" />
+              <div className="relative">
+                <div className="w-20 h-20 bg-gradient-to-tr from-amber-400 to-yellow-300 rounded-full border-4 border-[#78350F] flex items-center justify-center shadow-md">
+                  <Trophy className="w-10 h-10 text-[#78350F]" />
+                </div>
+                <div className="absolute -bottom-1 -right-1 bg-amber-500 text-white rounded-full p-1 border-2 border-white">
+                  <Star className="w-3.5 h-3.5 fill-white" />
+                </div>
               </div>
 
               <div>
-                <span className="text-xs font-black text-[#B45309] bg-amber-100 px-3 py-1 rounded-full border border-amber-300 uppercase">
-                  {isPracticingMistakes ? 'MISTAKE BOOK PRACTICE COMPLETE!' : `${themeInfo.title}: ${themeInfo.name} COMPLETE!`}
-                </span>
-                <h2 className="text-2xl sm:text-4xl font-black text-[#78350F] mt-2 uppercase tracking-tight">
-                  Awesome Job! 🎉
+                <div className="flex items-center justify-center gap-1.5 mb-1.5">
+                  <span className="text-xs font-black text-[#B45309] bg-amber-100 px-3 py-1 rounded-full border border-amber-300 uppercase">
+                    {isPracticingMistakes ? 'MISTAKE BOOK PRACTICE COMPLETE!' : `${themeInfo.title}: ${themeInfo.name} COMPLETE!`}
+                  </span>
+                </div>
+                <h2 className="text-2xl sm:text-4xl font-black text-[#78350F] uppercase tracking-tight">
+                  Awesome Job, {childDisplayName}! 🎉
                 </h2>
-                <p className="text-sm font-bold text-slate-600 mt-2">
+                <p className="text-xs sm:text-sm font-bold text-slate-600 mt-1">
                   You completed all {totalQuestions} questions! {completedQuestions.size} were mastered on the first try.
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 w-full">
-                <div className="bg-amber-50 rounded-2xl border-2 border-amber-300 p-3 sm:p-4 flex flex-col items-center shadow-xs">
-                  <span className="text-xl sm:text-2xl font-black text-emerald-700">
+              {/* POINTS EARNED BANNER */}
+              <div className="w-full bg-gradient-to-r from-amber-300 via-yellow-200 to-amber-300 rounded-2xl border-3 border-[#78350F] p-4 shadow-[3px_4px_0px_#78350F] flex flex-col items-center gap-1.5">
+                <span className="text-[11px] font-black text-[#92400E] uppercase tracking-wider flex items-center gap-1">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-700" />
+                  Score Recorded to Leaderboard
+                </span>
+                <div className="flex items-center gap-2">
+                  <Star className="w-6 h-6 fill-amber-600 text-amber-700 animate-spin" style={{ animationDuration: '6s' }} />
+                  <span className="text-3xl sm:text-4xl font-black text-[#78350F] tracking-tight">
+                    {finalScore.toLocaleString()} PTS
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap justify-center text-[10px] font-black text-[#78350F]/80">
+                  <span className="bg-white/80 px-2 py-0.5 rounded-md border border-[#78350F]/30">
+                    +{completedQuestions.size * 100} Base
+                  </span>
+                  {maxStreak >= 2 && (
+                    <span className="bg-orange-100 text-orange-800 px-2 py-0.5 rounded-md border border-orange-400">
+                      +{Math.max(0, maxStreak - 1) * 30} Streak Bonus
+                    </span>
+                  )}
+                  {completedQuestions.size === totalQuestions && (
+                    <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md border border-emerald-400">
+                      +250 Perfect
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 w-full">
+                <div className="bg-amber-50 rounded-2xl border-2 border-amber-300 p-2.5 sm:p-3 flex flex-col items-center shadow-xs">
+                  <span className="text-lg sm:text-xl font-black text-emerald-700">
                     {completedQuestions.size} / {totalQuestions}
                   </span>
-                  <span className="text-[11px] font-black text-slate-500 uppercase mt-1">
+                  <span className="text-[10px] font-black text-slate-500 uppercase mt-0.5">
                     Mastered
                   </span>
                 </div>
 
-                <div className="bg-amber-50 rounded-2xl border-2 border-amber-300 p-3 sm:p-4 flex flex-col items-center shadow-xs">
-                  <span className="text-xl sm:text-2xl font-black text-rose-600">
+                <div className="bg-amber-50 rounded-2xl border-2 border-amber-300 p-2.5 sm:p-3 flex flex-col items-center shadow-xs">
+                  <span className="text-lg sm:text-xl font-black text-rose-600">
                     {failedQuestions.size}
                   </span>
-                  <span className="text-[11px] font-black text-slate-500 uppercase mt-1">
+                  <span className="text-[10px] font-black text-slate-500 uppercase mt-0.5">
                     In Bag 🎒
                   </span>
                 </div>
 
-                <div className="bg-amber-50 rounded-2xl border-2 border-amber-300 p-3 sm:p-4 flex flex-col items-center shadow-xs">
-                  <span className="text-xl sm:text-2xl font-black text-orange-600 flex items-center gap-1">
-                    <Flame className="w-4 h-4 fill-orange-500 text-orange-500 inline" />
+                <div className="bg-amber-50 rounded-2xl border-2 border-amber-300 p-2.5 sm:p-3 flex flex-col items-center shadow-xs">
+                  <span className="text-lg sm:text-xl font-black text-orange-600 flex items-center gap-1">
+                    <Flame className="w-3.5 h-3.5 fill-orange-500 text-orange-500 inline" />
                     {maxStreak >= 2 ? `${maxStreak}x` : '1x'}
                   </span>
-                  <span className="text-[11px] font-black text-slate-500 uppercase mt-1">
+                  <span className="text-[10px] font-black text-slate-500 uppercase mt-0.5">
                     Best Strike
                   </span>
                 </div>
 
-                <div className="bg-amber-50 rounded-2xl border-2 border-amber-300 p-3 sm:p-4 flex flex-col items-center shadow-xs">
-                  <span className="text-xl sm:text-2xl font-black text-[#78350F] flex items-center gap-1">
-                    <Timer className="w-4 h-4 text-amber-700 inline" />
+                <div className="bg-amber-50 rounded-2xl border-2 border-amber-300 p-2.5 sm:p-3 flex flex-col items-center shadow-xs">
+                  <span className="text-lg sm:text-xl font-black text-[#78350F] flex items-center gap-1">
+                    <Timer className="w-3.5 h-3.5 text-amber-700 inline" />
                     {formatTime(elapsedSeconds)}
                   </span>
-                  <span className="text-[11px] font-black text-slate-500 uppercase mt-1">
+                  <span className="text-[10px] font-black text-slate-500 uppercase mt-0.5">
                     Time Spent
                   </span>
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row items-center gap-3 w-full mt-2">
+              {/* Action Buttons: View Leaderboard + Practice Again + Back */}
+              <div className="flex flex-col gap-2.5 w-full mt-1">
                 <button
-                  onClick={() => {
-                    sound.playStart();
-                    const newWords = isPracticingMistakes && mistakes.length > 0
-                      ? mistakes.map((m) => ({
-                          id: m.wordId,
-                          word: m.word,
-                          description: m.description,
-                          firstLetter: m.firstLetter,
-                          boxCount: m.boxCount,
-                          chinese: m.chinese,
-                          phonics: m.phonics,
-                          imageUrl: m.imageUrl,
-                        }))
-                      : shuffleWords(getThemeWords(selectedThemeId));
-                    setWords(newWords);
-                    setQuestionImageModes(
-                      generateQuestionImageModes(
-                        newWords,
-                        settings.wordImages,
-                        settings.enableImageClues,
-                        settings.imageRandomRate
-                      )
-                    );
-                    setIsFinished(false);
-                    setCurrentIndex(0);
-                    setCompletedQuestions(new Set());
-                    setFailedQuestions(new Set());
-                    setHintsUsed(0);
-                    setStreak(0);
-                    setMaxStreak(0);
-                    setElapsedSeconds(0);
-                  }}
-                  className="w-full sm:flex-1 py-3 bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-500 hover:to-yellow-500 border-3 border-[#78350F] rounded-2xl text-[#78350F] font-black text-sm shadow-[3px_3px_0px_#78350F] flex items-center justify-center gap-2 cursor-pointer transition-all"
-                >
-                  <RotateCcw className="w-4 h-4" />
-                  <span>Practice Again</span>
-                </button>
-
-                <button
+                  id="btn-view-leaderboard-finish"
                   onClick={() => {
                     sound.playPop();
-                    onBack();
+                    setCurrentScreen('leaderboard');
                   }}
-                  className="w-full sm:flex-1 py-3 bg-white hover:bg-slate-100 border-3 border-[#78350F] rounded-2xl text-[#78350F] font-black text-sm shadow-[3px_3px_0px_#78350F] flex items-center justify-center gap-2 cursor-pointer transition-all"
+                  className="w-full py-3 bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-400 hover:from-amber-500 hover:to-yellow-400 border-3 border-[#78350F] rounded-2xl text-[#78350F] font-black text-sm shadow-[3px_3px_0px_#78350F] flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-98"
                 >
-                  <ArrowLeft className="w-4 h-4" />
-                  <span>{isPracticingMistakes ? 'Back to Mistake Book' : 'Back to Themes'}</span>
+                  <Trophy className="w-4 h-4 text-amber-800" />
+                  <span>View Leaderboard & Rankings</span>
                 </button>
+
+                <div className="flex items-center gap-2.5 w-full">
+                  <button
+                    onClick={() => {
+                      sound.playStart();
+                      const newWords = isPracticingMistakes && mistakes.length > 0
+                        ? mistakes.map((m) => ({
+                            id: m.wordId,
+                            word: m.word,
+                            description: m.description,
+                            firstLetter: m.firstLetter,
+                            boxCount: m.boxCount,
+                            chinese: m.chinese,
+                            phonics: m.phonics,
+                            imageUrl: m.imageUrl,
+                          }))
+                        : shuffleWords(getThemeWords(selectedThemeId));
+                      setWords(newWords);
+                      setQuestionImageModes(
+                        generateQuestionImageModes(
+                          newWords,
+                          settings.wordImages,
+                          settings.enableImageClues,
+                          settings.imageRandomRate
+                        )
+                      );
+                      setIsFinished(false);
+                      setCurrentIndex(0);
+                      setCompletedQuestions(new Set());
+                      setFailedQuestions(new Set());
+                      setHintsUsed(0);
+                      setStreak(0);
+                      setMaxStreak(0);
+                      setElapsedSeconds(0);
+                    }}
+                    className="flex-1 py-2.5 bg-amber-100 hover:bg-amber-200 border-2 border-[#78350F] rounded-xl text-[#78350F] font-black text-xs shadow-[2px_2px_0px_#78350F] flex items-center justify-center gap-1.5 cursor-pointer transition-all"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Practice Again</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      sound.playPop();
+                      onBack();
+                    }}
+                    className="flex-1 py-2.5 bg-white hover:bg-slate-100 border-2 border-[#78350F] rounded-xl text-[#78350F] font-black text-xs shadow-[2px_2px_0px_#78350F] flex items-center justify-center gap-1.5 cursor-pointer transition-all"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span>{isPracticingMistakes ? 'Mistake Book' : 'Themes'}</span>
+                  </button>
+                </div>
               </div>
             </motion.div>
           )}

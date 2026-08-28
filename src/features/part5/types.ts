@@ -78,4 +78,4 @@ export interface AppSettings {
   wordImages: Record<number, string>; // Word ID -> Custom Image Link
 }
 
-export type ScreenState = 'menu' | 'screen2' | 'screen3' | 'mistake_book';
+export type ScreenState = 'menu' | 'screen2' | 'screen3' | 'mistake_book' | 'leaderboard';
