@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import {
   ArrowLeft,
@@ -11,10 +11,13 @@ import {
   AlertCircle,
   CheckCircle2,
   Trophy,
+  Star,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { sound } from '../utils/audio';
 import { useApp } from '../context/AppContext';
+import { useParentAccount } from '../../../context/ParentAccountContext';
+import { fetchLeaderboard, getChildLeaderboardStats } from '../utils/leaderboardStore';
 
 interface ModeSelectionScreenProps {
   onBack: () => void;
@@ -30,6 +33,25 @@ export const ModeSelectionScreen: React.FC<ModeSelectionScreenProps> = ({
   onSelectLeaderboard,
 }) => {
   const { settings, updateSettings, mistakes } = useApp();
+  const { profile } = useParentAccount();
+  const childName = profile?.childName?.trim() || 'Learner';
+
+  const [childStats, setChildStats] = useState<{ rank: number | null; bestScore: number }>({
+    rank: null,
+    bestScore: 0,
+  });
+
+  useEffect(() => {
+    fetchLeaderboard('all')
+      .then((entries) => {
+        const stats = getChildLeaderboardStats(entries, childName);
+        setChildStats({
+          rank: stats.rank,
+          bestScore: stats.bestScore,
+        });
+      })
+      .catch(() => {});
+  }, [childName]);
 
   const unmasteredMistakesCount = mistakes.filter((m) => !m.isMastered).length;
   const totalMistakesCount = mistakes.length;
@@ -232,24 +254,38 @@ export const ModeSelectionScreen: React.FC<ModeSelectionScreenProps> = ({
         >
           <div className="flex items-center gap-3.5">
             <div className="w-12 h-12 rounded-xl bg-white border-2 border-[#78350F] flex items-center justify-center shadow-xs text-2xl">
-              🏆
+              {childStats.rank === 1 ? '🥇' : childStats.rank === 2 ? '🥈' : childStats.rank === 3 ? '🥉' : '🏆'}
             </div>
             <div className="text-left">
               <div className="flex items-center gap-2">
                 <span className="text-base sm:text-lg font-black text-[#78350F] uppercase">
                   Spelling Bee Leaderboard
                 </span>
-                <span className="px-2 py-0.5 bg-amber-500 text-white rounded-full text-[10px] font-black uppercase">
-                  Rankings
-                </span>
+                {childStats.rank !== null ? (
+                  <span className="px-2 py-0.5 bg-[#78350F] text-yellow-300 rounded-full text-[10px] font-black uppercase">
+                    Rank #{childStats.rank}
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 bg-amber-500 text-white rounded-full text-[10px] font-black uppercase">
+                    Rankings
+                  </span>
+                )}
               </div>
               <p className="text-xs font-bold text-[#92400E]">
-                See who scored the highest points and climb to the #1 podium!
+                {childStats.rank !== null
+                  ? `${childName}'s best score: ${childStats.bestScore.toLocaleString()} pts • Tap to view all rankings!`
+                  : 'Play a game to set your score and climb to the #1 podium!'}
               </p>
             </div>
           </div>
 
           <div className="hidden sm:flex items-center gap-1.5 px-4 py-2 bg-white rounded-xl border-2 border-[#78350F] font-black text-xs text-[#78350F] shadow-2xs">
+            {childStats.bestScore > 0 && (
+              <span className="text-amber-700 mr-1 flex items-center gap-1">
+                <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
+                {childStats.bestScore.toLocaleString()}
+              </span>
+            )}
             <span>View Hall of Fame</span>
             <Trophy className="w-3.5 h-3.5 text-amber-600" />
           </div>

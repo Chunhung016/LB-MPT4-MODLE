@@ -15,78 +15,22 @@ export interface LeaderboardEntry {
 
 const LOCAL_STORAGE_KEY = 'little_bee_spelling_leaderboard_v1';
 
-// Seed sample leaderboard entries for initial display if DB is empty
-const INITIAL_DEMO_ENTRIES: LeaderboardEntry[] = [
-  {
-    id: 'demo-1',
-    child_name: 'Emma',
-    theme_name: 'My Week',
-    score: 1450,
-    mastered_count: 10,
-    total_questions: 10,
-    max_streak: 10,
-    time_seconds: 54,
-    created_at: new Date(Date.now() - 3600000 * 2).toISOString(),
-  },
-  {
-    id: 'demo-2',
-    child_name: 'Lucas',
-    theme_name: 'In the Garden',
-    score: 1320,
-    mastered_count: 10,
-    total_questions: 10,
-    max_streak: 8,
-    time_seconds: 68,
-    created_at: new Date(Date.now() - 3600000 * 5).toISOString(),
-  },
-  {
-    id: 'demo-3',
-    child_name: 'Chloe',
-    theme_name: 'School Life',
-    score: 1200,
-    mastered_count: 9,
-    total_questions: 10,
-    max_streak: 7,
-    time_seconds: 75,
-    created_at: new Date(Date.now() - 3600000 * 12).toISOString(),
-  },
-  {
-    id: 'demo-4',
-    child_name: 'Noah',
-    theme_name: 'Animals',
-    score: 1080,
-    mastered_count: 9,
-    total_questions: 10,
-    max_streak: 5,
-    time_seconds: 82,
-    created_at: new Date(Date.now() - 3600000 * 24).toISOString(),
-  },
-  {
-    id: 'demo-5',
-    child_name: 'Sophia',
-    theme_name: 'My Week',
-    score: 950,
-    mastered_count: 8,
-    total_questions: 10,
-    max_streak: 4,
-    time_seconds: 90,
-    created_at: new Date(Date.now() - 3600000 * 36).toISOString(),
-  },
-];
+// No fake/demo data - start fresh and empty
+const INITIAL_DEMO_ENTRIES: LeaderboardEntry[] = [];
 
 export function getLocalLeaderboard(): LeaderboardEntry[] {
   try {
     const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
+      if (Array.isArray(parsed)) {
         return parsed;
       }
     }
   } catch {
     // Ignore storage parse errors
   }
-  return INITIAL_DEMO_ENTRIES;
+  return [];
 }
 
 export function saveLocalLeaderboard(entries: LeaderboardEntry[]): void {
@@ -94,6 +38,25 @@ export function saveLocalLeaderboard(entries: LeaderboardEntry[]): void {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(entries.slice(0, 100)));
   } catch {
     // Ignore storage write errors
+  }
+}
+
+/**
+ * Clear all leaderboard entries (both in local storage and Supabase if accessible)
+ */
+export async function clearAllLeaderboard(): Promise<void> {
+  try {
+    localStorage.removeItem(LOCAL_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+
+  if (isSupabaseConfigured) {
+    try {
+      await supabase.from('spelling_bee_leaderboard').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    } catch {
+      // ignore
+    }
   }
 }
 
@@ -200,4 +163,32 @@ export async function fetchLeaderboard(filter: 'all' | 'today' = 'all'): Promise
     return local.filter((e) => new Date(e.created_at).getTime() >= startOfDayTime).sort((a, b) => b.score - a.score);
   }
   return local.sort((a, b) => b.score - a.score);
+}
+
+/**
+ * Get the current player's ranking and best score from the leaderboard entries
+ */
+export function getChildLeaderboardStats(
+  entries: LeaderboardEntry[],
+  childName: string
+): { rank: number | null; bestScore: number; recentEntry: LeaderboardEntry | null; totalRanked: number } {
+  if (!entries || entries.length === 0) {
+    return { rank: null, bestScore: 0, recentEntry: null, totalRanked: 0 };
+  }
+
+  const normalizedChild = childName.trim().toLowerCase();
+  const childIndex = entries.findIndex((e) => e.child_name.trim().toLowerCase() === normalizedChild);
+
+  const childEntries = entries.filter((e) => e.child_name.trim().toLowerCase() === normalizedChild);
+  const bestScore = childEntries.length > 0 ? Math.max(...childEntries.map((e) => e.score)) : 0;
+  const recentEntry = childEntries.length > 0
+    ? [...childEntries].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
+    : null;
+
+  return {
+    rank: childIndex !== -1 ? childIndex + 1 : null,
+    bestScore,
+    recentEntry,
+    totalRanked: entries.length,
+  };
 }

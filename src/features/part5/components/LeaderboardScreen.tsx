@@ -3,19 +3,25 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft,
   Trophy,
-  Medal,
   Crown,
   Sparkles,
   Flame,
-  Clock,
   RefreshCw,
   Award,
   Star,
   Play,
   User,
+  Trash2,
+  CheckCircle2,
+  TrendingUp,
 } from 'lucide-react';
 import { sound } from '../utils/audio';
-import { fetchLeaderboard, LeaderboardEntry } from '../utils/leaderboardStore';
+import {
+  fetchLeaderboard,
+  clearAllLeaderboard,
+  getChildLeaderboardStats,
+  LeaderboardEntry,
+} from '../utils/leaderboardStore';
 import { useParentAccount } from '../../../context/ParentAccountContext';
 
 interface LeaderboardScreenProps {
@@ -30,11 +36,13 @@ export const LeaderboardScreen: React.FC<LeaderboardScreenProps> = ({
   highlightEntryId,
 }) => {
   const { profile } = useParentAccount();
-  const childName = profile?.childName || 'Learner';
+  const childName = profile?.childName?.trim() || 'Learner';
 
   const [activeTab, setActiveTab] = useState<'all' | 'today'>('all');
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [showClearConfirm, setShowClearConfirm] = useState<boolean>(false);
+  const [clearMessage, setClearMessage] = useState<string | null>(null);
 
   const loadData = useCallback(async (tab: 'all' | 'today') => {
     setLoading(true);
@@ -57,8 +65,17 @@ export const LeaderboardScreen: React.FC<LeaderboardScreenProps> = ({
     setActiveTab(tab);
   };
 
+  const handleClearData = async () => {
+    sound.playPop();
+    await clearAllLeaderboard();
+    setEntries([]);
+    setShowClearConfirm(false);
+    setClearMessage('All leaderboard data has been reset.');
+    setTimeout(() => setClearMessage(null), 3000);
+  };
+
+  const childStats = getChildLeaderboardStats(entries, childName);
   const top3 = entries.slice(0, 3);
-  const remaining = entries.slice(3);
 
   // Helper for relative time string
   const formatTimeAgo = (dateStr: string) => {
@@ -135,11 +152,37 @@ export const LeaderboardScreen: React.FC<LeaderboardScreenProps> = ({
           >
             <RefreshCw className={`w-4 h-4 text-[#78350F] ${loading ? 'animate-spin' : ''}`} />
           </button>
+
+          {/* Reset / Clear Data Button */}
+          <button
+            onClick={() => {
+              sound.playPop();
+              setShowClearConfirm(true);
+            }}
+            className="px-2.5 sm:px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-full border-2 border-rose-300 text-xs font-black shadow-xs transition-all flex items-center gap-1 cursor-pointer active:scale-95"
+            title="Clear all present leaderboard data"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+            <span className="hidden sm:inline">Reset</span>
+          </button>
         </div>
       </header>
 
       {/* Main Leaderboard Content */}
       <main className="flex-1 max-w-4xl w-full mx-auto p-4 sm:p-6 md:p-8 flex flex-col items-center z-10 relative">
+        {/* Toast alert when data cleared */}
+        {clearMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="mb-4 px-4 py-2 bg-emerald-100 border-2 border-emerald-500 rounded-xl text-emerald-800 text-xs font-black flex items-center gap-1.5 shadow-sm"
+          >
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            <span>{clearMessage}</span>
+          </motion.div>
+        )}
+
         {/* Title & Tab Switcher */}
         <div className="text-center mb-6 w-full">
           <motion.div
@@ -182,7 +225,69 @@ export const LeaderboardScreen: React.FC<LeaderboardScreenProps> = ({
           </div>
         </div>
 
-        {/* TOP 3 PODIUM */}
+        {/* CURRENT CHILD SCORE & RANK CARD (PROMINENT HIGHLIGHT) */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="w-full max-w-3xl bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-400 rounded-3xl border-4 border-[#78350F] p-4 sm:p-5 shadow-[4px_6px_0px_#78350F] mb-6 flex flex-col sm:flex-row items-center justify-between gap-4"
+        >
+          <div className="flex items-center gap-3 text-left w-full sm:w-auto">
+            <div className="w-14 h-14 rounded-2xl bg-white border-3 border-[#78350F] flex items-center justify-center text-2xl shadow-xs shrink-0">
+              {childStats.rank === 1
+                ? '🥇'
+                : childStats.rank === 2
+                ? '🥈'
+                : childStats.rank === 3
+                ? '🥉'
+                : '⭐'}
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black uppercase text-[#92400E] tracking-wider">
+                  CURRENT PLAYER
+                </span>
+                <span className="px-2 py-0.2 bg-[#78350F] text-yellow-300 rounded-full text-[10px] font-black uppercase">
+                  {childName}
+                </span>
+              </div>
+              <h2 className="text-lg sm:text-xl font-black text-[#78350F] tracking-tight">
+                {childStats.rank ? `Rank #${childStats.rank} on Leaderboard` : 'Unranked (No games played yet)'}
+              </h2>
+              {childStats.recentEntry && (
+                <p className="text-[11px] font-bold text-[#78350F]/80">
+                  Last played: {childStats.recentEntry.theme_name} ({childStats.recentEntry.mastered_count}/{childStats.recentEntry.total_questions} words mastered)
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+            <div className="flex flex-col items-center sm:items-end bg-white/90 px-4 py-2 rounded-2xl border-2 border-[#78350F] shadow-xs">
+              <span className="text-[10px] font-black text-slate-500 uppercase">
+                {childStats.rank ? 'High Score' : 'Current Score'}
+              </span>
+              <div className="flex items-center gap-1">
+                <Star className="w-4 h-4 fill-amber-500 text-amber-600" />
+                <span className="text-xl sm:text-2xl font-black text-[#78350F]">
+                  {childStats.bestScore.toLocaleString()} PTS
+                </span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => {
+                sound.playStart();
+                onPlayNow();
+              }}
+              className="px-4 py-3 bg-[#78350F] hover:bg-[#92400E] text-yellow-300 rounded-2xl border-2 border-[#78350F] font-black text-xs shadow-xs flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all whitespace-nowrap"
+            >
+              <Play className="w-3.5 h-3.5 fill-yellow-300" />
+              <span>{childStats.rank ? 'Play to Beat High Score' : 'Play Practice Game'}</span>
+            </button>
+          </div>
+        </motion.div>
+
+        {/* TOP 3 PODIUM (if scores exist) */}
         {entries.length > 0 && (
           <div className="w-full max-w-2xl mb-8">
             <div className="grid grid-cols-3 gap-2 sm:gap-4 items-end justify-center pt-8">
@@ -318,10 +423,28 @@ export const LeaderboardScreen: React.FC<LeaderboardScreenProps> = ({
               <span className="text-xs font-bold text-slate-500">Loading Leaderboard...</span>
             </div>
           ) : entries.length === 0 ? (
-            <div className="py-12 flex flex-col items-center justify-center gap-2 text-center">
-              <Award className="w-10 h-10 text-amber-400" />
-              <span className="text-sm font-black text-[#78350F]">No scores recorded yet!</span>
-              <span className="text-xs font-bold text-slate-500">Be the first Spelling Bee Champion by playing a practice game.</span>
+            <div className="py-12 flex flex-col items-center justify-center gap-3 text-center">
+              <div className="w-16 h-16 rounded-full bg-amber-100 border-2 border-amber-300 flex items-center justify-center text-3xl">
+                🏆
+              </div>
+              <div>
+                <span className="text-base sm:text-lg font-black text-[#78350F]">
+                  Leaderboard is currently fresh & empty!
+                </span>
+                <p className="text-xs sm:text-sm font-bold text-slate-500 mt-1 max-w-sm mx-auto">
+                  Play a theme practice session with <strong>{childName}</strong> to record your first score and claim Rank #1!
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  sound.playStart();
+                  onPlayNow();
+                }}
+                className="mt-2 px-6 py-2.5 bg-gradient-to-r from-amber-400 to-yellow-300 hover:from-amber-500 hover:to-yellow-400 border-2 border-[#78350F] rounded-full text-[#78350F] font-black text-xs shadow-xs flex items-center gap-2 cursor-pointer transition-all active:scale-95"
+              >
+                <Play className="w-3.5 h-3.5 fill-[#78350F]" />
+                <span>Start First Practice Game</span>
+              </button>
             </div>
           ) : (
             <div className="flex flex-col gap-2 max-h-96 overflow-y-auto pr-1">
@@ -426,6 +549,47 @@ export const LeaderboardScreen: React.FC<LeaderboardScreenProps> = ({
           </div>
         </div>
       </main>
+
+      {/* Confirmation Dialog for Clearing Leaderboard */}
+      <AnimatePresence>
+        {showClearConfirm && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="bg-white rounded-3xl border-4 border-[#78350F] p-6 max-w-sm w-full shadow-[6px_8px_0px_#78350F] text-center flex flex-col items-center gap-4"
+            >
+              <div className="w-14 h-14 rounded-full bg-rose-100 border-2 border-rose-300 flex items-center justify-center">
+                <Trash2 className="w-7 h-7 text-rose-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-[#78350F]">Reset Leaderboard?</h3>
+                <p className="text-xs font-bold text-slate-500 mt-1">
+                  This will remove all present scores and rankings from the leaderboard so you can start fresh.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 w-full">
+                <button
+                  onClick={() => {
+                    sound.playPop();
+                    setShowClearConfirm(false);
+                  }}
+                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 border-2 border-slate-300 rounded-xl text-slate-700 font-black text-xs cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleClearData}
+                  className="flex-1 py-2.5 bg-rose-500 hover:bg-rose-600 text-white border-2 border-rose-700 rounded-xl font-black text-xs shadow-xs cursor-pointer"
+                >
+                  Yes, Reset All
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       <div className="h-6" />
     </div>

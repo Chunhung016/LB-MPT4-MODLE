@@ -27,7 +27,13 @@ import { getThemeById, getThemeWords } from '../data/allThemes';
 import { useApp } from '../context/AppContext';
 import { sound } from '../utils/audio';
 import { VoiceSettingsPanel } from './VoiceSettingsPanel';
-import { calculateGameScore, submitGameScore, LeaderboardEntry } from '../utils/leaderboardStore';
+import {
+  calculateGameScore,
+  submitGameScore,
+  fetchLeaderboard,
+  getChildLeaderboardStats,
+  LeaderboardEntry,
+} from '../utils/leaderboardStore';
 import { useParentAccount } from '../../../context/ParentAccountContext';
 
 interface Screen3Props {
@@ -91,6 +97,7 @@ export const Screen3: React.FC<Screen3Props> = ({
   const childDisplayName = profile?.childName?.trim() || 'Learner';
 
   const [finalScore, setFinalScore] = useState<number>(0);
+  const [currentRank, setCurrentRank] = useState<number | null>(null);
   const [submittedScoreEntry, setSubmittedScoreEntry] = useState<LeaderboardEntry | null>(null);
   const [isSubmittingScore, setIsSubmittingScore] = useState<boolean>(false);
 
@@ -353,8 +360,15 @@ export const Screen3: React.FC<Screen3Props> = ({
         max_streak: maxStreak,
         time_seconds: elapsedSeconds,
       })
-        .then((entry) => {
+        .then(async (entry) => {
           setSubmittedScoreEntry(entry);
+          try {
+            const allEntries = await fetchLeaderboard('all');
+            const childStats = getChildLeaderboardStats(allEntries, childDisplayName);
+            setCurrentRank(childStats.rank);
+          } catch {
+            // ignore
+          }
         })
         .finally(() => {
           setIsSubmittingScore(false);
@@ -1320,12 +1334,24 @@ export const Screen3: React.FC<Screen3Props> = ({
                 </p>
               </div>
 
-              {/* POINTS EARNED BANNER */}
+              {/* POINTS EARNED BANNER WITH RANK BADGE */}
               <div className="w-full bg-gradient-to-r from-amber-300 via-yellow-200 to-amber-300 rounded-2xl border-3 border-[#78350F] p-4 shadow-[3px_4px_0px_#78350F] flex flex-col items-center gap-1.5">
-                <span className="text-[11px] font-black text-[#92400E] uppercase tracking-wider flex items-center gap-1">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-700" />
-                  Score Recorded to Leaderboard
-                </span>
+                <div className="flex items-center justify-between w-full px-2">
+                  <span className="text-[11px] font-black text-[#92400E] uppercase tracking-wider flex items-center gap-1">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-700" />
+                    Score Recorded
+                  </span>
+                  {currentRank !== null ? (
+                    <span className="px-2.5 py-0.5 bg-[#78350F] text-yellow-300 rounded-full text-xs font-black flex items-center gap-1 shadow-2xs">
+                      <Trophy className="w-3 h-3 text-yellow-300" />
+                      Rank #{currentRank}
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 bg-amber-100/90 text-[#78350F] rounded-full text-[10px] font-black border border-amber-400">
+                      Top Score
+                    </span>
+                  )}
+                </div>
                 <div className="flex items-center gap-2">
                   <Star className="w-6 h-6 fill-amber-600 text-amber-700 animate-spin" style={{ animationDuration: '6s' }} />
                   <span className="text-3xl sm:text-4xl font-black text-[#78350F] tracking-tight">
