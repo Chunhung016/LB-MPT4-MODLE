@@ -793,6 +793,17 @@ export const HealthBoxesScreen: React.FC<HealthBoxesScreenProps> = ({ onBack }) 
       <div className="w-full bg-[#FEF3C7] border-b-4 border-[#78350F] px-4 sm:px-8 py-3.5 z-10 shadow-sm">
         <div className="max-w-6xl mx-auto flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                sound.playPop();
+                onBack();
+              }}
+              className="flex cursor-pointer items-center gap-1.5 rounded-full border-2 border-[#78350F] bg-white px-3 py-1.5 text-xs font-black text-[#78350F] shadow-[2px_2px_0_rgba(120,53,15,1)] transition-transform active:translate-y-0.5 hover:bg-amber-50 mr-1"
+              aria-label="Kembali"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              <span>KEMBALI</span>
+            </button>
             <span className="shrink-0 px-2.5 py-1 bg-[#F59E0B] text-[#78350F] font-black text-xs sm:text-sm rounded-lg border-2 border-[#78350F] shadow-xs">
               SOALAN
             </span>
