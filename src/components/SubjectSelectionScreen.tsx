@@ -48,6 +48,12 @@ const ChinesePartBExperience = lazy(() =>
   })),
 );
 
+const MathExperience = lazy(() =>
+  import('../features/math/MathExperience').then((module) => ({
+    default: module.MathExperience,
+  })),
+);
+
 type EnglishExperience = 'part3' | 'part4' | 'part5' | 'spelling-bee' | null;
 type ChineseExperience = 'part-b' | null;
 
@@ -63,6 +69,7 @@ export default function SubjectSelectionScreen({
   const [selectedSubject, setSelectedSubject] = useState<SubjectDefinition | null>(null);
   const [activeEnglishExperience, setActiveEnglishExperience] = useState<EnglishExperience>(null);
   const [activeChineseExperience, setActiveChineseExperience] = useState<ChineseExperience>(null);
+  const [activeMathExperience, setActiveMathExperience] = useState<boolean>(false);
   const [chineseLessonOpen, setChineseLessonOpen] = useState<boolean>(false);
   const deviceAccess = useDeviceAccess();
 
@@ -89,6 +96,10 @@ export default function SubjectSelectionScreen({
   const handleSubjectClick = (subj: SubjectDefinition) => {
     playBubbleSound();
     setChineseLessonOpen(false);
+    if (subj.id === 'math') {
+      setActiveMathExperience(true);
+      return;
+    }
     setSelectedSubject(subj);
   };
 
@@ -326,6 +337,23 @@ export default function SubjectSelectionScreen({
           }
         >
           <ChinesePartBExperience onExit={closeChineseExperience} />
+        </Suspense>
+      ) : null}
+
+      {activeMathExperience ? (
+        <Suspense
+          fallback={
+            <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[#FFFBEB]">
+              <div className="flex flex-col items-center gap-3 text-[#78350F]">
+                <div className="h-14 w-14 animate-bounce rounded-full border-[8px] border-amber-100 bg-white shadow-lg" />
+                <span className="font-['Fredoka',sans-serif] text-sm font-black tracking-wide">
+                  正在加载数学试题…
+                </span>
+              </div>
+            </div>
+          }
+        >
+          <MathExperience onExit={() => setActiveMathExperience(false)} />
         </Suspense>
       ) : null}
     </main>
