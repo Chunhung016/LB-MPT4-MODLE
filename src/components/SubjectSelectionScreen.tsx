@@ -67,6 +67,12 @@ const SciencePart2Experience = lazy(() =>
   })),
 );
 
+const BMPartCExperience = lazy(() =>
+  import('../features/bm-part-c/BMPartCExperience').then((module) => ({
+    default: module.BMPartCExperience,
+  })),
+);
+
 type EnglishExperience = 'part3' | 'part4' | 'part5' | 'spelling-bee' | null;
 type ChineseExperience = 'part-b' | 'part-c' | null;
 
@@ -84,6 +90,7 @@ export default function SubjectSelectionScreen({
   const [activeChineseExperience, setActiveChineseExperience] = useState<ChineseExperience>(null);
   const [activeMathExperience, setActiveMathExperience] = useState<boolean>(false);
   const [activeScienceExperience, setActiveScienceExperience] = useState<boolean>(false);
+  const [activeBmPartC, setActiveBmPartC] = useState<boolean>(false);
   const [chineseLessonOpen, setChineseLessonOpen] = useState<boolean>(false);
   const [bmLessonOpen, setBmLessonOpen] = useState<boolean>(false);
   const deviceAccess = useDeviceAccess();
@@ -321,6 +328,10 @@ export default function SubjectSelectionScreen({
           module={module}
           onClose={() => setSelectedSubject(null)}
           onOpenPartB={() => setBmLessonOpen(true)}
+          onOpenPartC={() => {
+            setSelectedSubject(null);
+            setActiveBmPartC(true);
+          }}
           activationCode={deviceAccess.activationCode}
           accessLoading={deviceAccess.loading}
           accessError={deviceAccess.error}
@@ -418,6 +429,23 @@ export default function SubjectSelectionScreen({
           }
         >
           <SciencePart2Experience onExit={() => setActiveScienceExperience(false)} />
+        </Suspense>
+      ) : null}
+
+      {activeBmPartC ? (
+        <Suspense
+          fallback={
+            <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[#FFFBEB]">
+              <div className="flex flex-col items-center gap-3 text-[#78350F]">
+                <div className="h-14 w-14 animate-bounce rounded-full border-[8px] border-emerald-100 bg-white shadow-lg" />
+                <span className="font-['Fredoka',sans-serif] text-sm font-black tracking-wide">
+                  正在加载国语 C 组…
+                </span>
+              </div>
+            </div>
+          }
+        >
+          <BMPartCExperience onExit={() => setActiveBmPartC(false)} />
         </Suspense>
       ) : null}
     </main>

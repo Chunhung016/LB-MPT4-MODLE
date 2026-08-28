@@ -16,6 +16,7 @@ interface BMPartsModalProps {
   module: RegisteredModule;
   onClose: () => void;
   onOpenPartB: () => void;
+  onOpenPartC: () => void;
   activationCode?: string | null;
   accessLoading?: boolean;
   accessError?: string | null;
@@ -24,7 +25,7 @@ interface BMPartsModalProps {
 
 const BM_PARTS = [
   { id: 'b', label: 'BAHAGIAN B', sublabel: 'Membaca & Pemahaman', icon: PencilLine, available: true },
-  { id: 'c', label: 'BAHAGIAN C', sublabel: 'Menulis Ulasan', icon: Languages, available: false },
+  { id: 'c', label: 'BAHAGIAN C', sublabel: 'Menulis Ulasan', icon: Languages, available: true },
   { id: 'd', label: 'BAHAGIAN D', sublabel: 'Penulisan Karangan', icon: Sparkles, available: false },
 ];
 
@@ -32,6 +33,7 @@ export default function BMPartsModal({
   module,
   onClose,
   onOpenPartB,
+  onOpenPartC,
   activationCode,
   accessLoading = false,
   accessError,
@@ -90,6 +92,7 @@ export default function BMPartsModal({
                 if (!part.available) return;
                 playBubbleSound();
                 if (part.id === 'b') onOpenPartB();
+                else if (part.id === 'c') onOpenPartC();
               };
 
               return (
