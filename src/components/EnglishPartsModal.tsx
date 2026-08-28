@@ -19,6 +19,7 @@ interface EnglishPartsModalProps {
   onOpenPart3: () => void;
   onOpenPart4: () => void;
   onOpenPart5: () => void;
+  onOpenPart6: () => void;
   onOpenSpellingBee: () => void;
   spellingBeeEnabled: boolean;
   activationCode: string | null;
@@ -31,7 +32,7 @@ const ENGLISH_PARTS = [
   { number: 3, icon: BookOpen, title: 'Comprehension', available: true },
   { number: 4, icon: PencilLine, title: 'Comprehension', available: true },
   { number: 5, icon: Languages, title: 'Spelling Worksheet', available: true },
-  { number: 6, icon: Sparkles, title: 'Coming Soon', available: false },
+  { number: 6, icon: Sparkles, title: 'Hobby Showcase', available: true },
 ];
 
 export default function EnglishPartsModal({
@@ -40,6 +41,7 @@ export default function EnglishPartsModal({
   onOpenPart3,
   onOpenPart4,
   onOpenPart5,
+  onOpenPart6,
   onOpenSpellingBee,
   spellingBeeEnabled,
   activationCode,
@@ -99,6 +101,7 @@ export default function EnglishPartsModal({
                 if (part.number === 3) onOpenPart3();
                 if (part.number === 4) onOpenPart4();
                 if (part.number === 5) onOpenPart5();
+                if (part.number === 6) onOpenPart6();
               };
 
               return (

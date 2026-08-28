@@ -73,7 +73,13 @@ const BMPartCExperience = lazy(() =>
   })),
 );
 
-type EnglishExperience = 'part3' | 'part4' | 'part5' | 'spelling-bee' | null;
+const EnglishPart6Experience = lazy(() =>
+  import('../features/english-part6/EnglishPart6Experience').then((module) => ({
+    default: module.EnglishPart6Experience,
+  })),
+);
+
+type EnglishExperience = 'part3' | 'part4' | 'part5' | 'part6' | 'spelling-bee' | null;
 type ChineseExperience = 'part-b' | 'part-c' | null;
 
 interface SubjectSelectionScreenProps {
@@ -297,6 +303,7 @@ export default function SubjectSelectionScreen({
           onOpenPart3={() => openEnglishExperience('part3')}
           onOpenPart4={() => openEnglishExperience('part4')}
           onOpenPart5={() => openEnglishExperience('part5')}
+          onOpenPart6={() => openEnglishExperience('part6')}
           onOpenSpellingBee={() => openEnglishExperience('spelling-bee')}
           spellingBeeEnabled={deviceAccess.spellingBeeEnabled}
           activationCode={deviceAccess.activationCode}
@@ -371,6 +378,8 @@ export default function SubjectSelectionScreen({
             <EnglishPart4Experience onExit={closeEnglishExperience} />
           ) : activeEnglishExperience === 'part5' ? (
             <EnglishPart5Experience onExit={closeEnglishExperience} />
+          ) : activeEnglishExperience === 'part6' ? (
+            <EnglishPart6Experience onExit={closeEnglishExperience} />
           ) : (
             <SpellingBeeExperience onExit={closeEnglishExperience} />
           )}
