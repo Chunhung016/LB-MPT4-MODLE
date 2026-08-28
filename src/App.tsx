@@ -8,6 +8,8 @@ import SubjectSelectionScreen from './components/SubjectSelectionScreen';
 import QRScannerModal from './components/QRScannerModal';
 import { LogicConfig, RegisteredModule } from './types';
 import AdminPortal from './components/AdminPortal';
+import ParentAccountGate from './components/ParentAccountGate';
+import { ParentAccountProvider } from './context/ParentAccountContext';
 
 const DEFAULT_CONFIG: LogicConfig = {
   systemVersion: 'MPT4-2026.1.0',
@@ -74,11 +76,7 @@ const DEFAULT_CONFIG: LogicConfig = {
   ),
 };
 
-export default function App() {
-  if (window.location.pathname.replace(/\/+$/, '') === '/admin') {
-    return <AdminPortal />;
-  }
-
+function WorksheetApp() {
   const [currentScreen, setCurrentScreen] = useState<'home' | 'secondScreen' | 'subjects'>('home');
   const [activeSelectedModule, setActiveSelectedModule] = useState<RegisteredModule | null>(null);
   const [isQRScannerOpen, setIsQRScannerOpen] = useState(false);
@@ -252,5 +250,19 @@ export default function App() {
         onRegisterSuccess={handleRegisterSuccess}
       />
     </div>
+  );
+}
+
+export default function App() {
+  if (window.location.pathname.replace(/\/+$/, '') === '/admin') {
+    return <AdminPortal />;
+  }
+
+  return (
+    <ParentAccountProvider>
+      <ParentAccountGate>
+        <WorksheetApp />
+      </ParentAccountGate>
+    </ParentAccountProvider>
   );
 }
