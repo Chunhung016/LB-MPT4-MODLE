@@ -43,6 +43,7 @@ export function MathExperience({ onExit }: MathExperienceProps) {
 
   // 翻页控制 (上一题/下一题)
   const currentIndex = ORDERED_QUESTIONS.indexOf(currentTab);
+
   const handlePrev = () => {
     if (currentIndex > 0) {
       sound.playPop(480);
@@ -63,23 +64,30 @@ export function MathExperience({ onExit }: MathExperienceProps) {
   };
 
   return (
-    <div className="min-h-screen bg-[#FDFCF0] flex flex-col text-stone-800 selection:bg-amber-200 selection:text-stone-900">
-      <button
-        id="math-experience-exit"
-        type="button"
-        onClick={() => {
-          sound.playPop();
-          onExit();
-        }}
-        className="fixed left-3 top-3 z-[85] flex cursor-pointer items-center gap-1.5 rounded-full border-2 border-[#78350F] bg-white/95 px-3 py-2 text-xs font-black text-[#78350F] shadow-[2px_2px_0_#78350F] backdrop-blur-md transition-transform active:translate-y-0.5 sm:left-5 sm:top-5 sm:px-4 sm:text-sm"
-        aria-label="返回科目选择"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        <span>返回科目</span>
-      </button>
-
+    <div className="fixed inset-0 z-[70] overflow-y-auto bg-[#FDFCF0] flex flex-col text-stone-800 selection:bg-amber-200 selection:text-stone-900">
       {/* 顶部中央气泡题目选择栏 (Middle Top Bubble Selection) */}
-      <div className="w-full pt-4 pb-2 px-4 flex flex-col items-center justify-center">
+      <div className="w-full pt-4 pb-2 px-4 flex flex-col items-center justify-center relative">
+        {/* 返回科目按钮 */}
+        <div className="w-full max-w-6xl flex items-center justify-between mb-3 px-2">
+          <button
+            id="math-experience-exit"
+            type="button"
+            onClick={() => {
+              sound.playPop(480);
+              onExit();
+            }}
+            className="flex cursor-pointer items-center gap-1.5 rounded-full border-2 border-stone-300 bg-white px-3.5 py-1.5 text-xs sm:text-sm font-black text-stone-800 shadow-xs hover:border-amber-500 hover:bg-[#F9F7EC] transition-transform active:scale-95"
+            aria-label="返回科目选择"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            <span>返回科目</span>
+          </button>
+
+          <div className="text-xs sm:text-sm font-black text-amber-950 bg-amber-100/90 px-3.5 py-1 rounded-full border border-amber-300">
+            SJKC 四年级数学 · 互动试卷
+          </div>
+        </div>
+
         <div className="inline-flex items-center gap-2 sm:gap-3 p-2 bg-[#FAF8EE] border-2 border-amber-200/90 rounded-full shadow-sm max-w-full overflow-x-auto">
           {/* 1 ~ 9 气泡选择器 */}
           <div className="flex items-center gap-2">
@@ -106,7 +114,6 @@ export function MathExperience({ onExit }: MathExperienceProps) {
 
           {/* 细微分割线与静音开关 */}
           <div className="h-7 w-0.5 bg-amber-200 mx-1 shrink-0" />
-
           <button
             id="sound-toggle-btn"
             onClick={handleToggleMute}
@@ -138,7 +145,7 @@ export function MathExperience({ onExit }: MathExperienceProps) {
         </div>
 
         {/* 底部前后快捷切换导航栏 */}
-        <div className="mt-8 pt-4 border-t-2 border-amber-200/60 flex items-center justify-between">
+        <div className="mt-8 pt-4 border-t-2 border-amber-200/60 flex items-center justify-between pb-8">
           <button
             id="prev-question-btn"
             disabled={currentIndex === 0}
