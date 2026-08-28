@@ -109,7 +109,7 @@ export default function BMPartsModal({
                       ? 'cursor-pointer border-emerald-200 bg-white hover:border-emerald-300 hover:bg-emerald-50'
                       : 'cursor-not-allowed border-slate-200 bg-slate-100/70 opacity-70'
                   }`}
-                  aria-label={`${part.label}: ${part.sublabel}`}
+                  aria-label={part.label}
                 >
                   <div
                     className={`relative flex h-24 w-24 items-center justify-center rounded-full border-[8px] bg-white shadow-lg sm:h-28 sm:w-28 sm:border-[10px] ${
@@ -141,9 +141,6 @@ export default function BMPartsModal({
                   </div>
                   <span className="mt-3 font-['Fredoka',sans-serif] text-base font-black tracking-wide text-[#78350F] sm:text-lg">
                     {part.label}
-                  </span>
-                  <span className={`mt-0.5 text-[10px] font-bold sm:text-xs ${part.available ? 'text-emerald-700' : 'text-slate-500'}`}>
-                    {part.sublabel}
                   </span>
                 </motion.button>
               );
