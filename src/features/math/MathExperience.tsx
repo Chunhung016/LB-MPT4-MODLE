@@ -68,7 +68,7 @@ export function MathExperience({ onExit }: MathExperienceProps) {
       {/* 顶部中央气泡题目选择栏 (Middle Top Bubble Selection) */}
       <div className="w-full pt-4 pb-2 px-4 flex flex-col items-center justify-center relative">
         {/* 返回科目按钮 */}
-        <div className="w-full max-w-6xl flex items-center justify-between mb-3 px-2">
+        <div className="w-full max-w-6xl flex items-center justify-start mb-3 px-2">
           <button
             id="math-experience-exit"
             type="button"
@@ -82,10 +82,6 @@ export function MathExperience({ onExit }: MathExperienceProps) {
             <ArrowLeft className="h-4 w-4" />
             <span>返回科目</span>
           </button>
-
-          <div className="text-xs sm:text-sm font-black text-amber-950 bg-amber-100/90 px-3.5 py-1 rounded-full border border-amber-300">
-            SJKC 四年级数学 · 互动试卷
-          </div>
         </div>
 
         <div className="inline-flex items-center gap-2 sm:gap-3 p-2 bg-[#FAF8EE] border-2 border-amber-200/90 rounded-full shadow-sm max-w-full overflow-x-auto">

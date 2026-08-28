@@ -85,9 +85,6 @@ export default function ChinesePartsModal({
             <div className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-bold text-rose-700">
               <Sparkles className="h-3.5 w-3.5" /> CHOOSE A PART / 选择组别
             </div>
-            <p className="mt-2 text-xs font-medium text-amber-900/70 sm:text-sm">
-              针对 UASA 考试标准设计，轻松精通华语各项考题。
-            </p>
           </div>
 
           <div className="flex flex-wrap items-start justify-center gap-x-4 gap-y-6 sm:gap-x-7 sm:gap-y-8">
