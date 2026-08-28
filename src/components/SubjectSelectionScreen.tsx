@@ -264,10 +264,13 @@ export default function SubjectSelectionScreen({
       ) : selectedSubject?.id === 'chinese' && !chineseLessonOpen ? (
         <ChinesePartsModal
           module={module}
-          subject={selectedSubject}
           onClose={() => setSelectedSubject(null)}
           onOpenPartA={() => setChineseLessonOpen(true)}
           onOpenPartB={openChinesePartB}
+          activationCode={deviceAccess.activationCode}
+          accessLoading={deviceAccess.loading}
+          accessError={deviceAccess.error}
+          onRefreshAccess={deviceAccess.refresh}
         />
       ) : selectedSubject?.id === 'chinese' && chineseLessonOpen ? (
         <SubjectLessonModal
