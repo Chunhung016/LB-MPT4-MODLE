@@ -16,6 +16,7 @@ import { playBubbleSound } from '../utils/audio';
 import SubjectLessonModal from './SubjectLessonModal';
 import EnglishPartsModal from './EnglishPartsModal';
 import ChinesePartsModal from './ChinesePartsModal';
+import BMPartsModal from './BMPartsModal';
 import { useDeviceAccess } from '../hooks/useDeviceAccess';
 
 const EnglishPart3Experience = lazy(() =>
@@ -71,6 +72,7 @@ export default function SubjectSelectionScreen({
   const [activeChineseExperience, setActiveChineseExperience] = useState<ChineseExperience>(null);
   const [activeMathExperience, setActiveMathExperience] = useState<boolean>(false);
   const [chineseLessonOpen, setChineseLessonOpen] = useState<boolean>(false);
+  const [bmLessonOpen, setBmLessonOpen] = useState<boolean>(false);
   const deviceAccess = useDeviceAccess();
 
   const openEnglishExperience = (experience: Exclude<EnglishExperience, null>) => {
@@ -96,6 +98,7 @@ export default function SubjectSelectionScreen({
   const handleSubjectClick = (subj: SubjectDefinition) => {
     playBubbleSound();
     setChineseLessonOpen(false);
+    setBmLessonOpen(false);
     if (subj.id === 'math') {
       setActiveMathExperience(true);
       return;
@@ -185,7 +188,7 @@ export default function SubjectSelectionScreen({
                   borderColor: subj.accentColor + '30', // soft colored bubble rim
                   boxShadow: `0 18px 45px ${subj.shadowColor}, inset 0 2px 8px rgba(255,255,255,0.9)`,
                 }}
-                aria-label={`Open ${subj.name} (${subj.secondaryName})`}
+                aria-label={`Open ${subj.name} ${subj.secondaryName || ''}`}
               >
                 {/* Vibrant Inner Color Tint with Gloss */}
                 <div 
@@ -249,11 +252,11 @@ export default function SubjectSelectionScreen({
       <div className="w-full flex items-center justify-between z-10 text-[11px] text-amber-900/60 font-semibold px-2">
         <span>LITTLE BEE MPT4 • 5 SUBJECT INTERACTIVE PORTAL @2026</span>
         <div className="flex space-x-2 items-center">
-          <div className="w-2.5 h-2.5 rounded-full bg-[#10B981]" title="国语 (Bahasa Melayu)" />
-          <div className="w-2.5 h-2.5 rounded-full bg-[#3B82F6]" title="英语 (English)" />
+          <div className="w-2.5 h-2.5 rounded-full bg-[#10B981]" title="国语" />
+          <div className="w-2.5 h-2.5 rounded-full bg-[#3B82F6]" title="英语" />
           <div className="w-2.5 h-2.5 rounded-full bg-[#EF4444]" title="华语" />
-          <div className="w-2.5 h-2.5 rounded-full bg-[#8B5CF6]" title="科学 (Science)" />
-          <div className="w-2.5 h-2.5 rounded-full bg-[#F59E0B]" title="数学 (Mathematics)" />
+          <div className="w-2.5 h-2.5 rounded-full bg-[#8B5CF6]" title="科学" />
+          <div className="w-2.5 h-2.5 rounded-full bg-[#F59E0B]" title="数学" />
         </div>
       </div>
 
@@ -289,6 +292,23 @@ export default function SubjectSelectionScreen({
           subject={selectedSubject}
           onClose={() => setChineseLessonOpen(false)}
           sectionLabel="甲组"
+        />
+      ) : selectedSubject?.id === 'bm' && !bmLessonOpen ? (
+        <BMPartsModal
+          module={module}
+          onClose={() => setSelectedSubject(null)}
+          onOpenPartB={() => setBmLessonOpen(true)}
+          activationCode={deviceAccess.activationCode}
+          accessLoading={deviceAccess.loading}
+          accessError={deviceAccess.error}
+          onRefreshAccess={deviceAccess.refresh}
+        />
+      ) : selectedSubject?.id === 'bm' && bmLessonOpen ? (
+        <SubjectLessonModal
+          module={module}
+          subject={selectedSubject}
+          onClose={() => setBmLessonOpen(false)}
+          sectionLabel="Bahagian B"
         />
       ) : selectedSubject ? (
         <SubjectLessonModal

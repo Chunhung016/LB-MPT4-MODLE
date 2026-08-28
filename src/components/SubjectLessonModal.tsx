@@ -194,7 +194,7 @@ export default function SubjectLessonModal({
                 ) : null}
               </div>
               <h2 className="text-2xl font-black text-[#78350F] font-['Fredoka',sans-serif] mt-0.5">
-                {subject.name} {subject.secondaryName ? `(${subject.secondaryName})` : ''}
+                {subject.name} {subject.secondaryName ? ` ${subject.secondaryName}` : ''}
               </h2>
             </div>
           </div>
@@ -230,7 +230,7 @@ export default function SubjectLessonModal({
                     Tahniah! Syabas! 恭喜完成！
                   </h3>
                   <p className="text-xs text-slate-600 max-w-md">
-                    You have successfully completed this interactive lesson in {subject.name} ({subject.secondaryName}).
+                    You have successfully completed this interactive lesson in {subject.name} {subject.secondaryName || ''}.
                   </p>
                 </div>
 
