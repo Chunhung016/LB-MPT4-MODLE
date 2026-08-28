@@ -18,6 +18,7 @@ interface ChinesePartsModalProps {
   onOpenPartA: () => void;
   onOpenPartB: () => void;
   onOpenPartC: () => void;
+  onOpenPartD: () => void;
   activationCode?: string | null;
   accessLoading?: boolean;
   accessError?: string | null;
@@ -27,7 +28,7 @@ interface ChinesePartsModalProps {
 const CHINESE_PARTS = [
   { id: 'yi', label: '乙组', sublabel: '阅读理解', icon: PencilLine, available: true },
   { id: 'bing', label: '丙组', sublabel: '供料作文', icon: Languages, available: true },
-  { id: 'ding', label: '丁组', sublabel: '命题作文', icon: Sparkles, available: false },
+  { id: 'ding', label: '丁组', sublabel: '命题作文', icon: Sparkles, available: true },
 ];
 
 export default function ChinesePartsModal({
@@ -36,6 +37,7 @@ export default function ChinesePartsModal({
   onOpenPartA,
   onOpenPartB,
   onOpenPartC,
+  onOpenPartD,
   activationCode,
   accessLoading = false,
   accessError,
@@ -96,6 +98,8 @@ export default function ChinesePartsModal({
                   onOpenPartC();
                 } else if (part.id === 'yi') {
                   onOpenPartB();
+                } else if (part.id === 'ding') {
+                  onOpenPartD();
                 }
               };
 

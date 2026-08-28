@@ -79,8 +79,14 @@ const EnglishPart6Experience = lazy(() =>
   })),
 );
 
+const ChinesePartDExperience = lazy(() =>
+  import('../features/chinese-part-d/ChinesePartDExperience').then((module) => ({
+    default: module.ChinesePartDExperience,
+  })),
+);
+
 type EnglishExperience = 'part3' | 'part4' | 'part5' | 'part6' | 'spelling-bee' | null;
-type ChineseExperience = 'part-b' | 'part-c' | null;
+type ChineseExperience = 'part-b' | 'part-c' | 'part-d' | null;
 
 interface SubjectSelectionScreenProps {
   module: RegisteredModule;
@@ -119,6 +125,11 @@ export default function SubjectSelectionScreen({
   const openChinesePartC = () => {
     setSelectedSubject(null);
     setActiveChineseExperience('part-c');
+  };
+
+  const openChinesePartD = () => {
+    setSelectedSubject(null);
+    setActiveChineseExperience('part-d');
   };
 
   const closeChineseExperience = () => {
@@ -318,6 +329,7 @@ export default function SubjectSelectionScreen({
           onOpenPartA={() => setChineseLessonOpen(true)}
           onOpenPartB={openChinesePartB}
           onOpenPartC={openChinesePartC}
+          onOpenPartD={openChinesePartD}
           activationCode={deviceAccess.activationCode}
           accessLoading={deviceAccess.loading}
           accessError={deviceAccess.error}
@@ -401,8 +413,10 @@ export default function SubjectSelectionScreen({
         >
           {activeChineseExperience === 'part-b' ? (
             <ChinesePartBExperience onExit={closeChineseExperience} />
-          ) : (
+          ) : activeChineseExperience === 'part-c' ? (
             <ChinesePartCExperience onExit={closeChineseExperience} />
+          ) : (
+            <ChinesePartDExperience onExit={closeChineseExperience} />
           )}
         </Suspense>
       ) : null}
