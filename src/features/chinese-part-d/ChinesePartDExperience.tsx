@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { TopicSelectionScreen } from './components/TopicSelectionScreen';
 import { GuidedWritingScreen } from './components/GuidedWritingScreen';
+import { ChineseDingzuExperience } from '../chinese-dingzu/ChineseDingzuExperience';
 import { sound } from './utils/audio';
 
 interface ChinesePartDExperienceProps {
@@ -18,6 +19,13 @@ export function ChinesePartDExperience({ onExit }: ChinesePartDExperienceProps) 
             setSelectedTopic(topicId);
           }}
           onExit={onExit}
+        />
+      ) : selectedTopic === 'discovery' ? (
+        <ChineseDingzuExperience
+          onExit={() => {
+            sound.playPop();
+            setSelectedTopic(null);
+          }}
         />
       ) : (
         <GuidedWritingScreen
