@@ -121,20 +121,21 @@ export default function ParentAccountGate({ children }: { children: ReactNode })
             {mode === 'signin' ? 'Sign in' : 'Create my account'}
           </button>
           
-          <div className="mt-4 flex items-center justify-between border-t border-amber-100 pt-3">
+          <div className="mt-4 flex flex-col gap-2 border-t border-amber-100 pt-3">
             <button
               type="button"
               onClick={handleQuickDemo}
               disabled={actionLoading}
-              className="w-full text-center text-xs font-bold text-amber-700 hover:text-amber-900 underline hover:no-underline cursor-pointer py-1"
+              className="w-full text-center text-xs font-bold text-amber-700 hover:text-amber-900 underline hover:no-underline cursor-pointer py-0.5"
             >
               ⚡ Quick Demo Parent Sign In (Leo Jenkins)
             </button>
+            {mode === 'signin' && (
+              <p className="text-center text-xs text-slate-500">
+                Forgot your username or password? Please check with the front desk reception staff — they can look up your username and reset your password in the Admin Portal.
+              </p>
+            )}
           </div>
-
-          <p className="mt-2 text-center text-xs text-slate-500">
-            {mode === 'signin' ? 'Forgot the password? Ask reception staff for assistance.' : 'Creating an account gives access to learning modules and token tracking.'}
-          </p>
         </form>
       </main>
     );
