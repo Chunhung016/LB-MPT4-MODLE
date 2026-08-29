@@ -60,6 +60,15 @@ const DEFAULT_CONFIG: LogicConfig = {
       targetVersion: 'MPT4-2026.4',
       logicRule: 'canvas_stroke_vector_eval',
     },
+    {
+      id: 'feat_acebee_snap',
+      name: 'AceBee Snap - AI Essay Grader',
+      category: 'ai',
+      description: 'AI-powered essay grading functionality. Requires AI entitlement.',
+      enabled: true,
+      targetVersion: 'MPT4-2026.1',
+      logicRule: 'check_ai_entitlement',
+    },
   ],
   customUpdateRules: JSON.stringify(
     {
@@ -245,6 +254,7 @@ function WorksheetApp() {
               <SubjectSelectionScreen
                 module={activeSelectedModule}
                 onBackToModules={() => setCurrentScreen('secondScreen')}
+                config={config}
               />
             )}
           </motion.div>

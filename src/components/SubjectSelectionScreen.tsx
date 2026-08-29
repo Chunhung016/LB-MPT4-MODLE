@@ -18,11 +18,19 @@ import EnglishPartsModal from './EnglishPartsModal';
 import ChinesePartsModal from './ChinesePartsModal';
 import BMPartsModal from './BMPartsModal';
 import { useDeviceAccess } from '../hooks/useDeviceAccess';
+import { useParentAccount } from '../context/ParentAccountContext';
+import { LogicConfig } from '../types';
+
+const AceBeeSnapExperience = lazy(() =>
+  import('../features/acebee-snap/AceBeeSnap').then((module) => ({
+    default: module.default || (Object.values(module).find(v => typeof v === 'function') as any)
+  }))
+);
 
 const EnglishPart3Experience = lazy(() =>
   import('../features/english-part3/EnglishPart3Experience').then((module) => ({
     default: module.EnglishPart3Experience,
-  })),
+  }))
 );
 
 const EnglishPart4Experience = lazy(() =>
@@ -97,6 +105,7 @@ type ChineseExperience = 'part-b' | 'part-c' | 'part-d' | null;
 interface SubjectSelectionScreenProps {
   module: RegisteredModule;
   onBackToModules: () => void;
+  config: LogicConfig;
 }
 
 const BMBahagianDExperience = lazy(() =>
@@ -108,6 +117,7 @@ const BMBahagianDExperience = lazy(() =>
 export default function SubjectSelectionScreen({
   module,
   onBackToModules,
+  config,
 }: SubjectSelectionScreenProps) {
   const [selectedSubject, setSelectedSubject] = useState<SubjectDefinition | null>(null);
   const [activeEnglishExperience, setActiveEnglishExperience] = useState<EnglishExperience>(null);
@@ -117,9 +127,13 @@ export default function SubjectSelectionScreen({
   const [activeBmPartC, setActiveBmPartC] = useState<boolean>(false);
   const [activeBmPartB, setActiveBmPartB] = useState<boolean>(false);
   const [activeBmPartD, setActiveBmPartD] = useState<boolean>(false);
+  const [activeAceBeeSnap, setActiveAceBeeSnap] = useState<boolean>(false);
   const [chineseLessonOpen, setChineseLessonOpen] = useState<boolean>(false);
   const [bmLessonOpen, setBmLessonOpen] = useState<boolean>(false);
   const deviceAccess = useDeviceAccess();
+  const { access } = useParentAccount();
+
+  const isAceBeeSnapEnabled = access?.aiFeaturesEnabled && config.featureToggles.some(f => f.id === 'feat_acebee_snap' && f.enabled);
 
   const openEnglishExperience = (experience: Exclude<EnglishExperience, null>) => {
     setSelectedSubject(null);
@@ -305,6 +319,77 @@ export default function SubjectSelectionScreen({
               </div>
             </motion.div>
           ))}
+
+          {isAceBeeSnapEnabled && (
+            <motion.div
+              id={`subject-item-acebee-snap`}
+              initial={{ scale: 0, opacity: 0, y: 30 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              transition={{
+                type: 'spring',
+                damping: 14,
+                stiffness: 220,
+                delay: SUBJECTS.length * 0.08,
+              }}
+              className="flex flex-col items-center justify-center group"
+            >
+              <motion.button
+                id={`bubble-subject-acebee-snap`}
+                onClick={() => {
+                  playBubbleSound();
+                  setActiveAceBeeSnap(true);
+                }}
+                whileHover={{ scale: 1.1, y: -6 }}
+                whileTap={{ scale: 0.94 }}
+                className="relative flex items-center justify-center w-28 h-28 sm:w-32 sm:h-32 md:w-36 md:h-36 lg:w-38 lg:h-38 rounded-full bg-white border-[8px] sm:border-[10px] md:border-[12px] shadow-xl transition-all duration-300 cursor-pointer focus:outline-hidden focus-visible:ring-4"
+                style={{
+                  borderColor: '#8B5CF6' + '30', // soft purple
+                  boxShadow: `0 18px 45px rgba(139, 92, 246, 0.25), inset 0 2px 8px rgba(255,255,255,0.9)`,
+                }}
+                aria-label={`Open AceBee Snap`}
+              >
+                <div 
+                  className="absolute inset-0 rounded-full scale-90 opacity-20 group-hover:scale-100 group-hover:opacity-35 transition-all duration-300 pointer-events-none"
+                  style={{
+                    backgroundColor: '#8B5CF6',
+                  }}
+                />
+                <div className="absolute top-2 left-2.5 w-9 h-4.5 rounded-full bg-gradient-to-b from-white/95 to-transparent rotate-[-28deg] pointer-events-none" />
+                <div 
+                  className="absolute bottom-1.5 inset-x-4 h-2 rounded-full opacity-40 blur-xs pointer-events-none"
+                  style={{ backgroundColor: '#8B5CF6' }}
+                />
+                <div className="relative z-10 flex items-center justify-center transition-transform group-hover:scale-110 duration-200">
+                  <Sparkles className="w-9 h-9 sm:w-11 sm:h-11" style={{ color: '#8B5CF6' }} />
+                </div>
+                <div 
+                  className="absolute -top-1 -right-1 w-6 h-6 sm:w-7 sm:h-7 rounded-full border-2 border-white flex items-center justify-center text-white shadow-sm"
+                  style={{ backgroundColor: '#8B5CF6' }}
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                </div>
+              </motion.button>
+              <div className="mt-3.5 flex flex-col items-center text-center">
+                <span 
+                  id={`subject-name-acebee-snap`}
+                  className="text-base sm:text-lg md:text-xl font-black font-['Fredoka',sans-serif] tracking-wide drop-shadow-xs"
+                  style={{ color: '#78350F' }}
+                >
+                  AceBee Snap
+                </span>
+                <span 
+                  className="text-[11px] sm:text-xs font-bold mt-0.5 px-2 py-0.5 rounded-full border"
+                  style={{
+                    color: '#8B5CF6',
+                    borderColor: '#8B5CF6' + '40',
+                    backgroundColor: '#8B5CF6' + '15',
+                  }}
+                >
+                  AI Essay Grader
+                </span>
+              </div>
+            </motion.div>
+          )}
         </div>
       </div>
 
@@ -530,6 +615,31 @@ export default function SubjectSelectionScreen({
             setActiveBmPartD(false);
             setSelectedSubject(SUBJECTS.find((subject) => subject.id === 'bm') ?? null);
           }} />
+        </Suspense>
+      ) : null}
+
+      {activeAceBeeSnap ? (
+        <Suspense
+          fallback={
+            <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[#FFFBEB]">
+              <div className="flex flex-col items-center gap-3 text-[#78350F]">
+                <div className="h-14 w-14 animate-bounce rounded-full border-[8px] border-purple-100 bg-white shadow-lg" />
+                <span className="font-['Fredoka',sans-serif] text-sm font-black tracking-wide">
+                  Loading AceBee Snap...
+                </span>
+              </div>
+            </div>
+          }
+        >
+          <div className="fixed inset-0 z-[70] bg-white overflow-hidden">
+             <button
+                onClick={() => setActiveAceBeeSnap(false)}
+                className="absolute z-[80] top-4 left-4 p-2 bg-white rounded-full border-2 border-purple-200 shadow-sm text-purple-700 cursor-pointer hover:bg-purple-50 flex items-center justify-center"
+             >
+                <ArrowLeft className="w-5 h-5" />
+             </button>
+             <AceBeeSnapExperience />
+          </div>
         </Suspense>
       ) : null}
     </main>

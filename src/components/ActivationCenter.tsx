@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import {
+  ArrowLeft,
   Bot,
   Check,
   Coins,
@@ -82,6 +83,15 @@ export default function ActivationCenter({ onContinue }: ActivationCenterProps) 
       <div className="relative z-10 mx-auto max-w-5xl">
         <header className="mb-5 flex flex-wrap items-center justify-between gap-4 rounded-3xl border-2 border-amber-200 bg-white/95 px-5 py-4 shadow-lg">
           <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={onContinue}
+              className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-2xl border-2 border-amber-200 bg-amber-50 text-[#78350F] hover:bg-amber-100 transition shadow-xs"
+              title="Return to modules & worksheets"
+              aria-label="Return to learning app"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#FBBF24]"><UserRound className="h-7 w-7" /></div>
             <div>
               <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-600">Little Bee account</p>
@@ -89,6 +99,13 @@ export default function ActivationCenter({ onContinue }: ActivationCenterProps) 
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onContinue}
+              className="flex cursor-pointer items-center gap-2 rounded-full border-2 border-amber-300 bg-[#FBBF24] px-4 py-2 text-sm font-black text-[#78350F] hover:bg-amber-400 shadow-xs transition"
+            >
+              <ArrowLeft className="h-4 w-4" /> Return to App
+            </button>
             <div className="flex items-center gap-2 rounded-full bg-amber-100 px-4 py-2 font-black">
               <Coins className="h-5 w-5 text-amber-500" /> {access.beeTokens.toLocaleString()} Bee Tokens
             </div>

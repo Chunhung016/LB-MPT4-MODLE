@@ -1,7 +1,7 @@
 export interface FeatureToggle {
   id: string;
   name: string;
-  category: 'core' | 'pedagogy' | 'audio' | 'sync' | 'experimental';
+  category: 'core' | 'pedagogy' | 'audio' | 'sync' | 'experimental' | 'ai';
   description: string;
   enabled: boolean;
   targetVersion: string;

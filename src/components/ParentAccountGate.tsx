@@ -30,12 +30,6 @@ export default function ParentAccountGate({ children }: { children: ReactNode })
   const [contactPhone, setContactPhone] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (profile && !access.spellingBeeEnabled && !access.aiFeaturesEnabled && !pendingRequest) {
-      setShowAccount(true);
-    }
-  }, [access.aiFeaturesEnabled, access.spellingBeeEnabled, pendingRequest, profile, setShowAccount]);
-
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setFormError(null);
