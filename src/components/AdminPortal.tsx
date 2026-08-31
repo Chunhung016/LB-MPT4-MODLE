@@ -23,6 +23,7 @@ import {
   UserRound,
   Users,
   Smartphone,
+  Wrench,
   X,
   Share2,
 } from 'lucide-react';
@@ -32,6 +33,8 @@ import ActivationQrScannerModal from './ActivationQrScannerModal';
 import ResetPasswordModal from './ResetPasswordModal';
 import BulkImportModal from './BulkImportModal';
 import PrintableRosterModal, { RosterItem } from './PrintableRosterModal';
+import AdminMaintenanceTab from './AdminMaintenanceTab';
+import { useMaintenance } from '../context/MaintenanceContext';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import { exportToCSV, exportToJSON } from '../utils/csvHelper';
 
@@ -88,6 +91,7 @@ function hasProduct(device: DeviceRow, productSlug: 'spelling_bee' | 'ai_feature
 }
 
 export default function AdminPortal() {
+  const { isMaintenanceBlocking } = useMaintenance();
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [isStaff, setIsStaff] = useState(false);
@@ -95,7 +99,7 @@ export default function AdminPortal() {
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [activeTab, setActiveTab] = useState<'directory' | 'activation' | 'devices'>('directory');
+  const [activeTab, setActiveTab] = useState<'directory' | 'activation' | 'devices' | 'maintenance'>('directory');
   
   const [devices, setDevices] = useState<DeviceRow[]>([]);
   const [profiles, setProfiles] = useState<Record<string, ParentProfileRow>>({});
@@ -787,6 +791,29 @@ _If you need your password reset, please contact reception!_`;
                     {devices.length}
                   </span>
                 </button>
+                <button
+                  id="admin-nav-maintenance-tab-btn"
+                  type="button"
+                  onClick={() => setActiveTab('maintenance')}
+                  className={`flex cursor-pointer items-center gap-2 rounded-2xl px-5 py-2.5 text-sm font-black transition ${
+                    activeTab === 'maintenance'
+                      ? 'bg-rose-600 text-white shadow-md'
+                      : isMaintenanceBlocking
+                      ? 'bg-rose-100 text-rose-800 border-2 border-rose-400 hover:bg-rose-200 animate-pulse'
+                      : 'bg-white/80 text-slate-600 hover:bg-white'
+                  }`}
+                >
+                  <Wrench className="h-4 w-4" /> System Maintenance
+                  {isMaintenanceBlocking ? (
+                    <span className="ml-1 rounded-full bg-rose-500 text-white px-2 py-0.5 text-[10px] font-black uppercase">
+                      LOCKED
+                    </span>
+                  ) : (
+                    <span className="ml-1 rounded-full bg-emerald-100 text-emerald-800 px-2 py-0.5 text-[10px] font-bold">
+                      ONLINE
+                    </span>
+                  )}
+                </button>
               </div>
 
               <button
@@ -1342,6 +1369,13 @@ _If you need your password reset, please contact reception!_`;
                     </div>
                   )}
                 </div>
+              </section>
+            )}
+
+            {/* System Maintenance Management Tab */}
+            {activeTab === 'maintenance' && (
+              <section id="admin-maintenance-tab-section">
+                <AdminMaintenanceTab />
               </section>
             )}
           </>

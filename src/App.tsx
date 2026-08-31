@@ -11,6 +11,9 @@ import { LogicConfig, RegisteredModule } from './types';
 import AdminPortal from './components/AdminPortal';
 import ParentAccountGate from './components/ParentAccountGate';
 import { ParentAccountProvider, useParentAccount } from './context/ParentAccountContext';
+import { MaintenanceProvider, useMaintenance } from './context/MaintenanceContext';
+import MaintenanceAnnouncementScreen from './components/MaintenanceAnnouncementScreen';
+import MaintenanceWarningBanner from './components/MaintenanceWarningBanner';
 
 const DEFAULT_CONFIG: LogicConfig = {
   systemVersion: 'MPT4-2026.1.0',
@@ -281,16 +284,38 @@ function WorksheetApp() {
   );
 }
 
-export default function App() {
-  if (window.location.pathname.replace(/\/+$/, '') === '/admin') {
-    return <AdminPortal />;
-  }
+function MaintenanceAppWrapper() {
+  const { isMaintenanceBlocking, isPreMaintenanceWarning } = useMaintenance();
 
   return (
-    <ParentAccountProvider>
-      <ParentAccountGate>
-        <WorksheetApp />
-      </ParentAccountGate>
-    </ParentAccountProvider>
+    <>
+      {/* Pre-maintenance notification warning banner */}
+      {isPreMaintenanceWarning && <MaintenanceWarningBanner />}
+
+      {/* Systemic Hard Lockout Screen - Completely prevents user from accessing or navigating */}
+      {isMaintenanceBlocking ? (
+        <MaintenanceAnnouncementScreen />
+      ) : (
+        <ParentAccountGate>
+          <WorksheetApp />
+        </ParentAccountGate>
+      )}
+    </>
+  );
+}
+
+export default function App() {
+  const isAdminRoute = window.location.pathname.replace(/\/+$/, '') === '/admin';
+
+  return (
+    <MaintenanceProvider>
+      {isAdminRoute ? (
+        <AdminPortal />
+      ) : (
+        <ParentAccountProvider>
+          <MaintenanceAppWrapper />
+        </ParentAccountProvider>
+      )}
+    </MaintenanceProvider>
   );
 }

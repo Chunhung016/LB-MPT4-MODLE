@@ -47,3 +47,24 @@ export interface LogicConfig {
   featureToggles: FeatureToggle[];
   customUpdateRules: string;
 }
+
+export interface SystemMaintenanceConfig {
+  isActive: boolean;
+  scheduledStart: string | null;
+  scheduledEnd: string | null;
+  title: string;
+  message: string;
+  apologyNote: string;
+  affectedServices: string[];
+  contactInfo: {
+    phone: string;
+    email: string;
+    receptionNote: string;
+  };
+  allowStaffBypass: boolean;
+  staffBypassCode: string;
+  showAdvanceWarning: boolean;
+  advanceWarningMinutes: number;
+  updatedAt: string;
+  updatedBy?: string;
+}
