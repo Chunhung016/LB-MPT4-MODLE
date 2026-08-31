@@ -80,7 +80,7 @@ export default function ResetPasswordModal({
       // Keep local store in sync
       updateLocalStoragePassword();
 
-      // Try invoking manage-parent-account edge function with update_password
+      // Attempt 1: Invoke manage-parent-account edge function
       const { data, error: funcError } = await supabase.functions.invoke('manage-parent-account', {
         body: {
           action: 'update_password',
@@ -90,27 +90,33 @@ export default function ResetPasswordModal({
         },
       });
 
-      if (funcError || data?.error) {
-        // Fallback: try reset_password action name in case of version differences
-        const { data: retryData, error: retryError } = await supabase.functions.invoke('manage-parent-account', {
-          body: {
-            action: 'reset_password',
-            userId,
-            password: newPassword,
-            username,
-          },
-        });
-
-        if (retryError || retryData?.error) {
-          const finalErrMsg = await getFunctionErrorMessage(retryError || funcError, retryData || data);
-          setError(finalErrMsg);
-          setBusy(false);
-          return;
-        }
+      if (!funcError && !data?.error) {
+        setSuccess(true);
+        onSuccess();
+        return;
       }
 
-      setSuccess(true);
-      onSuccess();
+      // Attempt 2: Try direct RPC function admin_set_parent_password
+      const { data: rpcData, error: rpcError } = await supabase.rpc('admin_set_parent_password', {
+        p_user_id: userId,
+        p_password: newPassword,
+      });
+
+      if (!rpcError && (rpcData as any)?.success === true) {
+        setSuccess(true);
+        onSuccess();
+        return;
+      }
+
+      // If both remote attempts fail, check error response
+      const finalErrMsg = await getFunctionErrorMessage(funcError, data);
+      if (finalErrMsg.toLowerCase().includes('unsupported account action')) {
+        setError(
+          'Edge Function not updated in Supabase cloud yet. Please run `supabase functions deploy manage-parent-account` in your terminal or apply the SQL migration.'
+        );
+      } else {
+        setError(finalErrMsg || rpcError?.message || 'Unable to update password.');
+      }
     } catch (err: any) {
       setError(err?.message || 'An unexpected error occurred while resetting password.');
     } finally {
