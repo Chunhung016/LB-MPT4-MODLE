@@ -7,13 +7,43 @@ import {
   useMemo,
   useState,
 } from 'react';
-import { SystemMaintenanceConfig } from '../types';
+import { PostMaintenanceChangelog, SystemMaintenanceConfig } from '../types';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 
 const MAINTENANCE_STORAGE_KEY = 'acebee_system_maintenance_v2';
 const BROADCAST_CHANNEL_NAME = 'acebee_maintenance_broadcast_channel';
+const SEEN_CHANGELOG_KEY_PREFIX = 'acebee_post_maint_seen_';
 
 export const ACEBEE_LOGO_URL = 'https://i.postimg.cc/pVSxYHDv/70f4dd9e-95f6-4f48-869d-74727b17b134.png';
+
+export const DEFAULT_POST_MAINTENANCE_CHANGELOG: PostMaintenanceChangelog = {
+  enabled: true,
+  releaseId: 'rel_2026_09_01_v1',
+  versionTag: 'Update 2026.2',
+  headline: 'Welcome Back! ACEBEE is Successfully Restored ✨',
+  subtitle: 'Our scheduled cloud optimization is complete. Here is what has been tuned up for your learners:',
+  highlights: [
+    {
+      id: 'hl_speed',
+      icon: 'zap',
+      title: '3x Faster Module & Worksheet Loading',
+      description: 'Streamlined database caching ensures worksheets open instantly on all iPads and tablets.',
+    },
+    {
+      id: 'hl_progress',
+      icon: 'star',
+      title: '100% Preserved Progress & Bee Tokens',
+      description: 'All earned stars, badges, completed lessons, and student avatars remain safe and synced.',
+    },
+    {
+      id: 'hl_reliability',
+      icon: 'shield',
+      title: 'Enhanced Stability & Cloud Sync',
+      description: 'Improved background connectivity prevents lesson interruptions and saves results automatically.',
+    },
+  ],
+  thankYouNote: 'Thank you for your patience while we tuned up the learning hive! Happy learning! 🐝💛',
+};
 
 export const DEFAULT_MAINTENANCE_CONFIG: SystemMaintenanceConfig = {
   isActive: false,
@@ -27,6 +57,7 @@ export const DEFAULT_MAINTENANCE_CONFIG: SystemMaintenanceConfig = {
     'We sincerely apologize for the temporary interruption to your learning routine. All student progress, achievements, and Bee Tokens are securely preserved.',
   statusNote: 'Our technicians are working actively. System will be restored momentarily.',
   logoUrl: ACEBEE_LOGO_URL,
+  postMaintenanceChangelog: DEFAULT_POST_MAINTENANCE_CHANGELOG,
   updatedAt: new Date().toISOString(),
   updatedBy: 'Admin',
 };
@@ -35,9 +66,11 @@ interface MaintenanceContextValue {
   config: SystemMaintenanceConfig;
   isMaintenanceBlocking: boolean;
   remainingMs: number;
+  showPostMaintenanceModal: boolean;
+  dismissPostMaintenanceModal: () => void;
   saveConfig: (nextConfig: SystemMaintenanceConfig) => Promise<void>;
   enableImmediateMaintenance: (durationMinutes: number) => Promise<void>;
-  disableMaintenance: () => Promise<void>;
+  disableMaintenance: (generateNewReleaseId?: boolean) => Promise<void>;
   scheduleMaintenance: (
     startIso: string,
     endIso: string,
@@ -53,7 +86,15 @@ export function MaintenanceProvider({ children }: { children: ReactNode }) {
     try {
       const stored = localStorage.getItem(MAINTENANCE_STORAGE_KEY);
       if (stored) {
-        return { ...DEFAULT_MAINTENANCE_CONFIG, ...JSON.parse(stored) };
+        const parsed = JSON.parse(stored);
+        return {
+          ...DEFAULT_MAINTENANCE_CONFIG,
+          ...parsed,
+          postMaintenanceChangelog: {
+            ...DEFAULT_POST_MAINTENANCE_CHANGELOG,
+            ...(parsed.postMaintenanceChangelog || {}),
+          },
+        };
       }
     } catch {
       // ignore
@@ -62,6 +103,7 @@ export function MaintenanceProvider({ children }: { children: ReactNode }) {
   });
 
   const [now, setNow] = useState<number>(Date.now());
+  const [hasDismissedCurrentRelease, setHasDismissedCurrentRelease] = useState<boolean>(false);
 
   // Precision timer: tick every second to check auto-expiration and keep countdown in sync
   useEffect(() => {
@@ -97,6 +139,33 @@ export function MaintenanceProvider({ children }: { children: ReactNode }) {
     };
   }, [config, now]);
 
+  // Compute whether post-maintenance modal should display (only if system is unlocked & not seen yet)
+  const showPostMaintenanceModal = useMemo(() => {
+    if (isMaintenanceBlocking) return false;
+    const changelog = config.postMaintenanceChangelog;
+    if (!changelog || !changelog.enabled || !changelog.releaseId) return false;
+    if (hasDismissedCurrentRelease) return false;
+
+    try {
+      const seen = localStorage.getItem(SEEN_CHANGELOG_KEY_PREFIX + changelog.releaseId);
+      return seen !== 'true';
+    } catch {
+      return false;
+    }
+  }, [isMaintenanceBlocking, config.postMaintenanceChangelog, hasDismissedCurrentRelease]);
+
+  const dismissPostMaintenanceModal = useCallback(() => {
+    const releaseId = config.postMaintenanceChangelog?.releaseId;
+    if (releaseId) {
+      try {
+        localStorage.setItem(SEEN_CHANGELOG_KEY_PREFIX + releaseId, 'true');
+      } catch {
+        // ignore
+      }
+    }
+    setHasDismissedCurrentRelease(true);
+  }, [config.postMaintenanceChangelog?.releaseId]);
+
   // Sync from Supabase if configured
   const refreshMaintenanceStatus = useCallback(async () => {
     if (!isSupabaseConfigured) return;
@@ -110,7 +179,14 @@ export function MaintenanceProvider({ children }: { children: ReactNode }) {
 
       if (!error && data?.value) {
         const parsed = typeof data.value === 'string' ? JSON.parse(data.value) : data.value;
-        const merged = { ...DEFAULT_MAINTENANCE_CONFIG, ...parsed };
+        const merged: SystemMaintenanceConfig = {
+          ...DEFAULT_MAINTENANCE_CONFIG,
+          ...parsed,
+          postMaintenanceChangelog: {
+            ...DEFAULT_POST_MAINTENANCE_CHANGELOG,
+            ...(parsed.postMaintenanceChangelog || {}),
+          },
+        };
         setConfig(merged);
         try {
           localStorage.setItem(MAINTENANCE_STORAGE_KEY, JSON.stringify(merged));
@@ -143,7 +219,14 @@ export function MaintenanceProvider({ children }: { children: ReactNode }) {
       if (event.key === MAINTENANCE_STORAGE_KEY && event.newValue) {
         try {
           const parsed = JSON.parse(event.newValue);
-          setConfig({ ...DEFAULT_MAINTENANCE_CONFIG, ...parsed });
+          setConfig({
+            ...DEFAULT_MAINTENANCE_CONFIG,
+            ...parsed,
+            postMaintenanceChangelog: {
+              ...DEFAULT_POST_MAINTENANCE_CHANGELOG,
+              ...(parsed.postMaintenanceChangelog || {}),
+            },
+          });
         } catch {
           // ignore
         }
@@ -221,16 +304,29 @@ export function MaintenanceProvider({ children }: { children: ReactNode }) {
     [config, saveConfig]
   );
 
-  const disableMaintenance = useCallback(async () => {
-    const nextConfig: SystemMaintenanceConfig = {
-      ...config,
-      isActive: false,
-      scheduledStart: null,
-      scheduledEnd: null,
-      updatedAt: new Date().toISOString(),
-    };
-    await saveConfig(nextConfig);
-  }, [config, saveConfig]);
+  const disableMaintenance = useCallback(
+    async (generateNewReleaseId: boolean = true) => {
+      const currentChangelog = config.postMaintenanceChangelog || DEFAULT_POST_MAINTENANCE_CHANGELOG;
+      const nextReleaseId = generateNewReleaseId
+        ? `rel_${Date.now()}`
+        : currentChangelog.releaseId;
+
+      const nextConfig: SystemMaintenanceConfig = {
+        ...config,
+        isActive: false,
+        scheduledStart: null,
+        scheduledEnd: null,
+        postMaintenanceChangelog: {
+          ...currentChangelog,
+          releaseId: nextReleaseId,
+        },
+        updatedAt: new Date().toISOString(),
+      };
+      setHasDismissedCurrentRelease(false);
+      await saveConfig(nextConfig);
+    },
+    [config, saveConfig]
+  );
 
   const scheduleMaintenance = useCallback(
     async (
@@ -256,6 +352,8 @@ export function MaintenanceProvider({ children }: { children: ReactNode }) {
       config,
       isMaintenanceBlocking,
       remainingMs,
+      showPostMaintenanceModal,
+      dismissPostMaintenanceModal,
       saveConfig,
       enableImmediateMaintenance,
       disableMaintenance,
@@ -266,6 +364,8 @@ export function MaintenanceProvider({ children }: { children: ReactNode }) {
       config,
       isMaintenanceBlocking,
       remainingMs,
+      showPostMaintenanceModal,
+      dismissPostMaintenanceModal,
       saveConfig,
       enableImmediateMaintenance,
       disableMaintenance,

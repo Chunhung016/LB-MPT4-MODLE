@@ -1,20 +1,52 @@
 import { FormEvent, useState } from 'react';
 import { AnimatePresence } from 'motion/react';
 import {
+  BookOpen,
   Calendar,
+  Check,
   CheckCircle2,
   Eye,
   HeartHandshake,
   Lock,
   MessageSquare,
+  Palette,
+  Plus,
+  Radio,
   Save,
+  Shield,
   Smartphone,
+  Sparkles,
+  Star,
+  Trash2,
   Unlock,
   X,
+  Zap,
 } from 'lucide-react';
-import { useMaintenance } from '../context/MaintenanceContext';
-import { SystemMaintenanceConfig } from '../types';
+import {
+  DEFAULT_POST_MAINTENANCE_CHANGELOG,
+  useMaintenance,
+} from '../context/MaintenanceContext';
+import {
+  PostMaintenanceChangelog,
+  PostMaintenanceHighlight,
+  SystemMaintenanceConfig,
+} from '../types';
 import MaintenanceAnnouncementScreen from './MaintenanceAnnouncementScreen';
+import PostMaintenanceModal from './PostMaintenanceModal';
+
+const AVAILABLE_ICONS: Array<{
+  value: PostMaintenanceHighlight['icon'];
+  label: string;
+  icon: typeof Zap;
+}> = [
+  { value: 'zap', label: 'Speed (Zap)', icon: Zap },
+  { value: 'sparkles', label: 'Feature (Sparkles)', icon: Sparkles },
+  { value: 'star', label: 'Rewards/Tokens (Star)', icon: Star },
+  { value: 'shield', label: 'Security & Sync (Shield)', icon: Shield },
+  { value: 'bookOpen', label: 'Modules (Book)', icon: BookOpen },
+  { value: 'palette', label: 'UI/Theme (Palette)', icon: Palette },
+  { value: 'check', label: 'Fixes (Check)', icon: Check },
+];
 
 export default function AdminMaintenanceTab() {
   const {
@@ -27,10 +59,18 @@ export default function AdminMaintenanceTab() {
     remainingMs,
   } = useMaintenance();
 
-  const [editForm, setEditForm] = useState<SystemMaintenanceConfig>({ ...config });
+  const [editForm, setEditForm] = useState<SystemMaintenanceConfig>({
+    ...config,
+    postMaintenanceChangelog: {
+      ...DEFAULT_POST_MAINTENANCE_CHANGELOG,
+      ...(config.postMaintenanceChangelog || {}),
+    },
+  });
+
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewChangelogOpen, setPreviewChangelogOpen] = useState(false);
   const [previewDevice, setPreviewDevice] = useState<'desktop' | 'mobile'>('desktop');
 
   // Custom scheduling states
@@ -108,6 +148,79 @@ export default function AdminMaintenanceTab() {
     setTimeout(() => setSaveSuccess(false), 2500);
   };
 
+  // Helper for adding new highlight in post-maintenance notes
+  const handleAddHighlight = () => {
+    const newHighlight: PostMaintenanceHighlight = {
+      id: `hl_${Date.now()}`,
+      icon: 'sparkles',
+      title: 'New Improvement',
+      description: 'Describe the feature or optimization added during maintenance.',
+    };
+    const currentChangelog = editForm.postMaintenanceChangelog || DEFAULT_POST_MAINTENANCE_CHANGELOG;
+    setEditForm({
+      ...editForm,
+      postMaintenanceChangelog: {
+        ...currentChangelog,
+        highlights: [...(currentChangelog.highlights || []), newHighlight],
+      },
+    });
+  };
+
+  const handleUpdateHighlight = (
+    id: string,
+    field: keyof PostMaintenanceHighlight,
+    val: string
+  ) => {
+    const currentChangelog = editForm.postMaintenanceChangelog || DEFAULT_POST_MAINTENANCE_CHANGELOG;
+    const nextHighlights = (currentChangelog.highlights || []).map((h) =>
+      h.id === id ? { ...h, [field]: val } : h
+    );
+    setEditForm({
+      ...editForm,
+      postMaintenanceChangelog: {
+        ...currentChangelog,
+        highlights: nextHighlights,
+      },
+    });
+  };
+
+  const handleDeleteHighlight = (id: string) => {
+    const currentChangelog = editForm.postMaintenanceChangelog || DEFAULT_POST_MAINTENANCE_CHANGELOG;
+    const nextHighlights = (currentChangelog.highlights || []).filter((h) => h.id !== id);
+    setEditForm({
+      ...editForm,
+      postMaintenanceChangelog: {
+        ...currentChangelog,
+        highlights: nextHighlights,
+      },
+    });
+  };
+
+  // Broadcast current changelog as a new release to all users immediately
+  const handleBroadcastChangelog = async () => {
+    const newReleaseId = `rel_${Date.now()}`;
+    const currentChangelog = editForm.postMaintenanceChangelog || DEFAULT_POST_MAINTENANCE_CHANGELOG;
+    const updatedChangelog: PostMaintenanceChangelog = {
+      ...currentChangelog,
+      enabled: true,
+      releaseId: newReleaseId,
+    };
+    const nextConfig: SystemMaintenanceConfig = {
+      ...editForm,
+      postMaintenanceChangelog: updatedChangelog,
+      updatedAt: new Date().toISOString(),
+    };
+    setSaving(true);
+    await saveConfig(nextConfig);
+    setEditForm(nextConfig);
+    setSaving(false);
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 2500);
+    alert('✨ Release Notes broadcasted! All users will see this "What\'s New" modal once upon opening the app.');
+  };
+
+  const changelogData = editForm.postMaintenanceChangelog || DEFAULT_POST_MAINTENANCE_CHANGELOG;
+
   return (
     <div id="admin-maintenance-tab-container" className="space-y-6">
       {/* 1. TOP STATUS & EMERGENCY CONTROLS BAR */}
@@ -163,7 +276,7 @@ export default function AdminMaintenanceTab() {
               </h2>
               <p className="text-xs text-slate-500">
                 {isMaintenanceBlocking
-                  ? 'When the countdown ends or when you click "Stop Maintenance & Open App", the lock immediately lifts automatically.'
+                  ? 'When the countdown ends or when you click "Stop Maintenance & Open App", the lock lifts automatically and the "What\'s New" modal is presented once to returning learners.'
                   : 'You can trigger immediate emergency maintenance or schedule a planned maintenance window below.'}
               </p>
             </div>
@@ -176,11 +289,11 @@ export default function AdminMaintenanceTab() {
                 <button
                   id="admin-stop-maintenance-btn"
                   type="button"
-                  onClick={() => void disableMaintenance()}
+                  onClick={() => void disableMaintenance(true)}
                   disabled={saving}
                   className="flex cursor-pointer items-center gap-2 rounded-full bg-emerald-600 px-5 py-2.5 text-xs font-black text-white shadow-lg hover:bg-emerald-700 active:scale-95 transition"
                 >
-                  <Unlock className="h-4 w-4" /> Stop Maintenance & Open App
+                  <Unlock className="h-4 w-4" /> Stop Maintenance & Show What's New
                 </button>
                 <div className="flex items-center gap-1 bg-white p-1 rounded-full border border-slate-200">
                   <span className="text-[10px] font-bold text-slate-500 px-2">Extend:</span>
@@ -252,8 +365,251 @@ export default function AdminMaintenanceTab() {
         </div>
       </section>
 
+      {/* 2. POST-MAINTENANCE "WHAT'S NEW" CHANGELOG MANAGER */}
+      <section
+        id="admin-post-maintenance-changelog-card"
+        className="rounded-3xl border-2 border-amber-300 bg-gradient-to-br from-amber-50/70 via-white to-amber-50/40 p-6 sm:p-7 shadow-lg space-y-5"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-200 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-400 text-amber-950 shadow-sm">
+              <Sparkles className="h-6 w-6" />
+            </div>
+            <div>
+              <h3 className="font-['Fredoka',sans-serif] text-lg font-black text-slate-900">
+                Post-Maintenance "What's New" Announcement
+              </h3>
+              <p className="text-xs text-slate-500">
+                Shown <span className="font-bold text-amber-800">once</span> to parents and students right after maintenance completes.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-2 rounded-full border border-amber-300 bg-white px-3.5 py-1.5 text-xs font-bold text-amber-950 shadow-2xs cursor-pointer">
+              <input
+                type="checkbox"
+                checked={changelogData.enabled}
+                onChange={(e) =>
+                  setEditForm({
+                    ...editForm,
+                    postMaintenanceChangelog: {
+                      ...changelogData,
+                      enabled: e.target.checked,
+                    },
+                  })
+                }
+                className="h-4 w-4 rounded accent-amber-500"
+              />
+              <span>Enable Announcement Modal</span>
+            </label>
+
+            <button
+              type="button"
+              onClick={() => setPreviewChangelogOpen(true)}
+              className="flex items-center gap-1.5 rounded-full bg-white border border-amber-300 px-3.5 py-1.5 text-xs font-bold text-amber-900 hover:bg-amber-100 shadow-2xs cursor-pointer"
+            >
+              <Eye className="h-3.5 w-3.5 text-amber-600" /> Preview "What's New"
+            </button>
+          </div>
+        </div>
+
+        {/* Changelog Inputs */}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1">
+              Version Tag (Badge)
+            </label>
+            <input
+              type="text"
+              value={changelogData.versionTag || ''}
+              onChange={(e) =>
+                setEditForm({
+                  ...editForm,
+                  postMaintenanceChangelog: {
+                    ...changelogData,
+                    versionTag: e.target.value,
+                  },
+                })
+              }
+              placeholder="Update 2026.2"
+              className="w-full rounded-2xl border-2 border-amber-100 bg-white px-3.5 py-2 text-xs font-bold text-slate-800 outline-none focus:border-amber-400"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1">
+              Headline Title
+            </label>
+            <input
+              type="text"
+              value={changelogData.headline || ''}
+              onChange={(e) =>
+                setEditForm({
+                  ...editForm,
+                  postMaintenanceChangelog: {
+                    ...changelogData,
+                    headline: e.target.value,
+                  },
+                })
+              }
+              placeholder="Welcome Back! ACEBEE is Successfully Restored ✨"
+              className="w-full rounded-2xl border-2 border-amber-100 bg-white px-3.5 py-2 text-xs font-bold text-slate-800 outline-none focus:border-amber-400"
+            />
+          </div>
+
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1">
+              Subtitle / Overview Message
+            </label>
+            <input
+              type="text"
+              value={changelogData.subtitle || ''}
+              onChange={(e) =>
+                setEditForm({
+                  ...editForm,
+                  postMaintenanceChangelog: {
+                    ...changelogData,
+                    subtitle: e.target.value,
+                  },
+                })
+              }
+              placeholder="Our scheduled cloud optimization is complete. Here is what has been tuned up for your learners:"
+              className="w-full rounded-2xl border-2 border-amber-100 bg-white px-3.5 py-2 text-xs text-slate-700 outline-none focus:border-amber-400 font-medium"
+            />
+          </div>
+        </div>
+
+        {/* Highlights List Builder */}
+        <div className="space-y-3 pt-2">
+          <div className="flex items-center justify-between">
+            <label className="block text-xs font-black uppercase tracking-wider text-slate-700">
+              Key Changes & Highlights List ({changelogData.highlights?.length || 0})
+            </label>
+            <button
+              type="button"
+              onClick={handleAddHighlight}
+              className="flex items-center gap-1 rounded-full bg-amber-200/90 px-3 py-1 text-xs font-black text-amber-950 hover:bg-amber-300 cursor-pointer shadow-2xs"
+            >
+              <Plus className="h-3.5 w-3.5" /> Add Highlight
+            </button>
+          </div>
+
+          <div className="space-y-2.5">
+            {changelogData.highlights && changelogData.highlights.length > 0 ? (
+              changelogData.highlights.map((h, idx) => (
+                <div
+                  key={h.id || idx}
+                  className="flex flex-col sm:flex-row items-start sm:items-center gap-2.5 rounded-2xl border border-amber-200 bg-white p-3 shadow-2xs"
+                >
+                  {/* Icon Selector */}
+                  <div className="shrink-0">
+                    <select
+                      value={h.icon}
+                      onChange={(e) =>
+                        handleUpdateHighlight(h.id, 'icon', e.target.value as PostMaintenanceHighlight['icon'])
+                      }
+                      className="rounded-xl border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs font-bold text-amber-900 outline-none"
+                    >
+                      {AVAILABLE_ICONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Title */}
+                  <div className="flex-1 w-full">
+                    <input
+                      type="text"
+                      value={h.title}
+                      onChange={(e) => handleUpdateHighlight(h.id, 'title', e.target.value)}
+                      placeholder="Title (e.g. 3x Faster Worksheet Loading)"
+                      className="w-full rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-800 outline-none focus:border-amber-400"
+                    />
+                  </div>
+
+                  {/* Description */}
+                  <div className="flex-2 w-full">
+                    <input
+                      type="text"
+                      value={h.description}
+                      onChange={(e) => handleUpdateHighlight(h.id, 'description', e.target.value)}
+                      placeholder="Short description of the change..."
+                      className="w-full rounded-xl border border-slate-200 px-3 py-1.5 text-xs text-slate-600 outline-none focus:border-amber-400"
+                    />
+                  </div>
+
+                  {/* Delete */}
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteHighlight(h.id)}
+                    aria-label="Delete highlight"
+                    className="p-1.5 text-slate-400 hover:text-rose-600 cursor-pointer rounded-lg hover:bg-rose-50"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))
+            ) : (
+              <p className="text-xs text-slate-400 italic">No highlight bullet points added yet.</p>
+            )}
+          </div>
+        </div>
+
+        {/* Thank You Note */}
+        <div>
+          <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1">
+            Reassurance & Thank-You Footer Note
+          </label>
+          <input
+            type="text"
+            value={changelogData.thankYouNote || ''}
+            onChange={(e) =>
+              setEditForm({
+                ...editForm,
+                postMaintenanceChangelog: {
+                  ...changelogData,
+                  thankYouNote: e.target.value,
+                },
+              })
+            }
+            placeholder="Thank you for your patience while we tuned up the learning hive! Happy learning! 🐝💛"
+            className="w-full rounded-2xl border-2 border-amber-100 bg-white px-3.5 py-2 text-xs text-slate-700 outline-none focus:border-amber-400 font-medium"
+          />
+        </div>
+
+        {/* Save & Broadcast Actions */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-amber-200/80 pt-4">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleBroadcastChangelog}
+              disabled={saving}
+              className="flex items-center gap-1.5 rounded-full bg-amber-100 border border-amber-300 px-4 py-2 text-xs font-black text-amber-950 hover:bg-amber-200 cursor-pointer shadow-2xs active:scale-95 transition"
+            >
+              <Radio className="h-3.5 w-3.5 text-amber-700" /> Broadcast as New Release to All
+            </button>
+            <span className="text-[11px] text-slate-500 hidden sm:inline">
+              (Bumps release ID so every user sees it on next app visit)
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => void handleSaveForm()}
+            disabled={saving}
+            className="flex items-center gap-2 rounded-full bg-amber-500 px-6 py-2.5 text-xs font-black text-white shadow-md hover:bg-amber-600 active:scale-95 transition cursor-pointer"
+          >
+            <Save className="h-4 w-4" /> Save Changelog Settings
+          </button>
+        </div>
+      </section>
+
+      {/* 3. SCHEDULE & TIMING CONFIGURATION + NOTICE CONTENT */}
       <div className="grid gap-6 lg:grid-cols-12">
-        {/* 2. SCHEDULE & TIMING CONFIGURATION (4 COLS) */}
+        {/* SCHEDULE & TIMING (4 COLS) */}
         <div className="space-y-6 lg:col-span-4">
           <div className="rounded-3xl border-2 border-amber-200 bg-white p-6 shadow-md">
             <div className="flex items-center gap-2 border-b border-amber-100 pb-3 mb-4">
@@ -301,7 +657,7 @@ export default function AdminMaintenanceTab() {
           </div>
         </div>
 
-        {/* 3. ANNOUNCEMENT & APOLOGY CONTENT EDITOR (8 COLS) */}
+        {/* NOTICE CONTENT (8 COLS) */}
         <div className="space-y-6 lg:col-span-8">
           <form
             onSubmit={handleSaveForm}
@@ -311,7 +667,7 @@ export default function AdminMaintenanceTab() {
               <div className="flex items-center gap-2">
                 <MessageSquare className="h-5 w-5 text-amber-600" />
                 <h3 className="font-['Fredoka',sans-serif] text-lg font-black text-slate-900">
-                  Notice Screen Information
+                  Lockout Screen Information
                 </h3>
               </div>
               <span className="text-xs text-slate-400">Fits iPad & tablet screens</span>
@@ -422,7 +778,7 @@ export default function AdminMaintenanceTab() {
         </div>
       </div>
 
-      {/* 4. MODAL: LIVE PREVIEW OF MAINTENANCE SCREEN */}
+      {/* 4. MODAL: LIVE PREVIEW OF LOCKOUT NOTICE SCREEN */}
       <AnimatePresence>
         {previewOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
@@ -432,7 +788,7 @@ export default function AdminMaintenanceTab() {
                 <div className="flex items-center gap-2">
                   <Eye className="h-4 w-4 text-amber-400" />
                   <span className="font-['Fredoka',sans-serif] text-sm font-black text-amber-300">
-                    Live Maintenance Screen Simulator (iPad & Desktop)
+                    Live Lockout Screen Simulator (iPad & Desktop)
                   </span>
                 </div>
 
@@ -482,6 +838,17 @@ export default function AdminMaintenanceTab() {
               </div>
             </div>
           </div>
+        )}
+      </AnimatePresence>
+
+      {/* 5. MODAL: LIVE PREVIEW OF "WHAT'S NEW" CHANGELOG */}
+      <AnimatePresence>
+        {previewChangelogOpen && (
+          <PostMaintenanceModal
+            previewMode={true}
+            previewData={changelogData}
+            onClosePreview={() => setPreviewChangelogOpen(false)}
+          />
         )}
       </AnimatePresence>
     </div>

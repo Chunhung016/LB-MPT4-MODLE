@@ -13,6 +13,7 @@ import ParentAccountGate from './components/ParentAccountGate';
 import { ParentAccountProvider, useParentAccount } from './context/ParentAccountContext';
 import { MaintenanceProvider, useMaintenance } from './context/MaintenanceContext';
 import MaintenanceAnnouncementScreen from './components/MaintenanceAnnouncementScreen';
+import PostMaintenanceModal from './components/PostMaintenanceModal';
 
 const DEFAULT_CONFIG: LogicConfig = {
   systemVersion: 'MPT4-2026.1.0',
@@ -292,9 +293,12 @@ function MaintenanceAppWrapper() {
   }
 
   return (
-    <ParentAccountGate>
-      <WorksheetApp />
-    </ParentAccountGate>
+    <>
+      <ParentAccountGate>
+        <WorksheetApp />
+      </ParentAccountGate>
+      <PostMaintenanceModal />
+    </>
   );
 }
 

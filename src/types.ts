@@ -48,6 +48,23 @@ export interface LogicConfig {
   customUpdateRules: string;
 }
 
+export interface PostMaintenanceHighlight {
+  id: string;
+  icon: 'zap' | 'sparkles' | 'shield' | 'palette' | 'star' | 'bookOpen' | 'check';
+  title: string;
+  description: string;
+}
+
+export interface PostMaintenanceChangelog {
+  enabled: boolean;
+  releaseId: string;
+  versionTag: string;
+  headline: string;
+  subtitle: string;
+  highlights: PostMaintenanceHighlight[];
+  thankYouNote: string;
+}
+
 export interface SystemMaintenanceConfig {
   isActive: boolean;
   scheduledStart: string | null;
@@ -58,6 +75,7 @@ export interface SystemMaintenanceConfig {
   apologyNote: string;
   statusNote: string;
   logoUrl?: string;
+  postMaintenanceChangelog?: PostMaintenanceChangelog;
   updatedAt: string;
   updatedBy?: string;
 }
