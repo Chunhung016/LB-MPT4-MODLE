@@ -13,7 +13,6 @@ import ParentAccountGate from './components/ParentAccountGate';
 import { ParentAccountProvider, useParentAccount } from './context/ParentAccountContext';
 import { MaintenanceProvider, useMaintenance } from './context/MaintenanceContext';
 import MaintenanceAnnouncementScreen from './components/MaintenanceAnnouncementScreen';
-import MaintenanceWarningBanner from './components/MaintenanceWarningBanner';
 
 const DEFAULT_CONFIG: LogicConfig = {
   systemVersion: 'MPT4-2026.1.0',
@@ -285,22 +284,17 @@ function WorksheetApp() {
 }
 
 function MaintenanceAppWrapper() {
-  const { isMaintenanceBlocking, isPreMaintenanceWarning } = useMaintenance();
+  const { isMaintenanceBlocking } = useMaintenance();
+
+  /* Systemic Hard Lockout Screen - Completely prevents user from accessing or navigating when maintenance is active */
+  if (isMaintenanceBlocking) {
+    return <MaintenanceAnnouncementScreen />;
+  }
 
   return (
-    <>
-      {/* Pre-maintenance notification warning banner */}
-      {isPreMaintenanceWarning && <MaintenanceWarningBanner />}
-
-      {/* Systemic Hard Lockout Screen - Completely prevents user from accessing or navigating */}
-      {isMaintenanceBlocking ? (
-        <MaintenanceAnnouncementScreen />
-      ) : (
-        <ParentAccountGate>
-          <WorksheetApp />
-        </ParentAccountGate>
-      )}
-    </>
+    <ParentAccountGate>
+      <WorksheetApp />
+    </ParentAccountGate>
   );
 }
 

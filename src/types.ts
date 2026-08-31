@@ -54,17 +54,10 @@ export interface SystemMaintenanceConfig {
   scheduledEnd: string | null;
   title: string;
   message: string;
+  apologyTitle: string;
   apologyNote: string;
-  affectedServices: string[];
-  contactInfo: {
-    phone: string;
-    email: string;
-    receptionNote: string;
-  };
-  allowStaffBypass: boolean;
-  staffBypassCode: string;
-  showAdvanceWarning: boolean;
-  advanceWarningMinutes: number;
+  statusNote: string;
+  logoUrl?: string;
   updatedAt: string;
   updatedBy?: string;
 }

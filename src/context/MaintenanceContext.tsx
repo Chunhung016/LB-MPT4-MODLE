@@ -10,9 +10,10 @@ import {
 import { SystemMaintenanceConfig } from '../types';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 
-const MAINTENANCE_STORAGE_KEY = 'little_bee_system_maintenance_v1';
-const STAFF_BYPASS_STORAGE_KEY = 'little_bee_staff_maintenance_bypass_v1';
-const BROADCAST_CHANNEL_NAME = 'little_bee_maintenance_broadcast_channel';
+const MAINTENANCE_STORAGE_KEY = 'acebee_system_maintenance_v2';
+const BROADCAST_CHANNEL_NAME = 'acebee_maintenance_broadcast_channel';
+
+export const ACEBEE_LOGO_URL = 'https://i.postimg.cc/pVSxYHDv/70f4dd9e-95f6-4f48-869d-74727b17b134.png';
 
 export const DEFAULT_MAINTENANCE_CONFIG: SystemMaintenanceConfig = {
   isActive: false,
@@ -20,35 +21,20 @@ export const DEFAULT_MAINTENANCE_CONFIG: SystemMaintenanceConfig = {
   scheduledEnd: null,
   title: 'Scheduled System Maintenance & Cloud Optimization',
   message:
-    'The Little Bee Learning Platform is currently undergoing scheduled server upgrades and database optimization to provide your children with a smoother, faster, and more engaging learning experience.',
+    'The ACEBEE Learning Platform is currently undergoing scheduled server upgrades and database optimization to provide your children with a smoother, faster, and more engaging learning experience.',
+  apologyTitle: 'A Sincere Note from ACEBEE Team',
   apologyNote:
     'We sincerely apologize for the temporary interruption to your learning routine. All student progress, achievements, and Bee Tokens are securely preserved.',
-  affectedServices: [
-    'Interactive Worksheets & Modules',
-    'AI Snap Essay Grader',
-    'Spelling Bee Practice & Contests',
-    'Token Rewards & Cloud Progress Sync',
-  ],
-  contactInfo: {
-    phone: '+60 12-345 6789',
-    email: 'support@littlebee.edu',
-    receptionNote: 'Little Bee Learning Centre Reception Desk',
-  },
-  allowStaffBypass: true,
-  staffBypassCode: 'BEEADMIN2026',
-  showAdvanceWarning: true,
-  advanceWarningMinutes: 15,
+  statusNote: 'Our technicians are working actively. System will be restored momentarily.',
+  logoUrl: ACEBEE_LOGO_URL,
   updatedAt: new Date().toISOString(),
-  updatedBy: 'System Administrator',
+  updatedBy: 'Admin',
 };
 
 interface MaintenanceContextValue {
   config: SystemMaintenanceConfig;
   isMaintenanceBlocking: boolean;
-  isPreMaintenanceWarning: boolean;
   remainingMs: number;
-  timeUntilStartMs: number;
-  staffBypassed: boolean;
   saveConfig: (nextConfig: SystemMaintenanceConfig) => Promise<void>;
   enableImmediateMaintenance: (durationMinutes: number) => Promise<void>;
   disableMaintenance: () => Promise<void>;
@@ -57,8 +43,6 @@ interface MaintenanceContextValue {
     endIso: string,
     additionalDetails?: Partial<SystemMaintenanceConfig>
   ) => Promise<void>;
-  verifyStaffBypass: (inputCode: string) => boolean;
-  clearStaffBypass: () => void;
   refreshMaintenanceStatus: () => Promise<void>;
 }
 
@@ -77,17 +61,9 @@ export function MaintenanceProvider({ children }: { children: ReactNode }) {
     return DEFAULT_MAINTENANCE_CONFIG;
   });
 
-  const [staffBypassed, setStaffBypassed] = useState<boolean>(() => {
-    try {
-      return sessionStorage.getItem(STAFF_BYPASS_STORAGE_KEY) === 'true';
-    } catch {
-      return false;
-    }
-  });
-
   const [now, setNow] = useState<number>(Date.now());
 
-  // High precision timer: tick every second to keep countdowns and auto-unlocks accurate
+  // Precision timer: tick every second to check auto-expiration and keep countdown in sync
   useEffect(() => {
     const timer = setInterval(() => {
       setNow(Date.now());
@@ -95,55 +71,33 @@ export function MaintenanceProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(timer);
   }, []);
 
-  // Compute status
-  const { isMaintenanceBlocking, isPreMaintenanceWarning, remainingMs, timeUntilStartMs } =
-    useMemo(() => {
-      if (!config.isActive) {
-        return {
-          isMaintenanceBlocking: false,
-          isPreMaintenanceWarning: false,
-          remainingMs: 0,
-          timeUntilStartMs: 0,
-        };
-      }
+  // Compute maintenance blocking state
+  const { isMaintenanceBlocking, remainingMs } = useMemo(() => {
+    if (!config.isActive) {
+      return { isMaintenanceBlocking: false, remainingMs: 0 };
+    }
 
-      const startMs = config.scheduledStart ? new Date(config.scheduledStart).getTime() : null;
-      const endMs = config.scheduledEnd ? new Date(config.scheduledEnd).getTime() : null;
+    const startMs = config.scheduledStart ? new Date(config.scheduledStart).getTime() : null;
+    const endMs = config.scheduledEnd ? new Date(config.scheduledEnd).getTime() : null;
 
-      // Check if scheduled start is in the future
-      if (startMs && now < startMs) {
-        const timeUntilStart = startMs - now;
-        const warningWindowMs = (config.advanceWarningMinutes || 15) * 60 * 1000;
-        const isWarning = config.showAdvanceWarning && timeUntilStart <= warningWindowMs;
-        return {
-          isMaintenanceBlocking: false,
-          isPreMaintenanceWarning: isWarning,
-          remainingMs: endMs ? Math.max(0, endMs - now) : 0,
-          timeUntilStartMs: timeUntilStart,
-        };
-      }
+    // If scheduled for a future start time, do not block yet
+    if (startMs && now < startMs) {
+      return { isMaintenanceBlocking: false, remainingMs: endMs ? Math.max(0, endMs - now) : 0 };
+    }
 
-      // Check if scheduled end has passed -> auto unlock!
-      if (endMs && now >= endMs) {
-        return {
-          isMaintenanceBlocking: false,
-          isPreMaintenanceWarning: false,
-          remainingMs: 0,
-          timeUntilStartMs: 0,
-        };
-      }
+    // If scheduled end time has been reached, automatically unlock the app!
+    if (endMs && now >= endMs) {
+      return { isMaintenanceBlocking: false, remainingMs: 0 };
+    }
 
-      // Active maintenance period
-      const remaining = endMs ? Math.max(0, endMs - now) : 0;
-      return {
-        isMaintenanceBlocking: !staffBypassed,
-        isPreMaintenanceWarning: false,
-        remainingMs: remaining,
-        timeUntilStartMs: 0,
-      };
-    }, [config, now, staffBypassed]);
+    const remaining = endMs ? Math.max(0, endMs - now) : 0;
+    return {
+      isMaintenanceBlocking: true,
+      remainingMs: remaining,
+    };
+  }, [config, now]);
 
-  // Load from Supabase if table exists, otherwise use localStorage
+  // Sync from Supabase if configured
   const refreshMaintenanceStatus = useCallback(async () => {
     if (!isSupabaseConfigured) return;
 
@@ -165,11 +119,11 @@ export function MaintenanceProvider({ children }: { children: ReactNode }) {
         }
       }
     } catch {
-      // table might not exist in some projects, fallback to local storage safely
+      // fallback
     }
   }, []);
 
-  // Broadcast & Cross-Tab synchronization
+  // Cross-tab broadcast listener
   useEffect(() => {
     let broadcastChannel: BroadcastChannel | null = null;
     try {
@@ -199,10 +153,9 @@ export function MaintenanceProvider({ children }: { children: ReactNode }) {
     window.addEventListener('storage', handleStorage);
     void refreshMaintenanceStatus();
 
-    // Poll every 30 seconds for remote cloud updates
     const pollInterval = setInterval(() => {
       void refreshMaintenanceStatus();
-    }, 30000);
+    }, 20000);
 
     return () => {
       broadcastChannel?.close();
@@ -211,7 +164,6 @@ export function MaintenanceProvider({ children }: { children: ReactNode }) {
     };
   }, [refreshMaintenanceStatus]);
 
-  // Save config function
   const saveConfig = useCallback(
     async (nextConfig: SystemMaintenanceConfig) => {
       const updated = {
@@ -226,7 +178,6 @@ export function MaintenanceProvider({ children }: { children: ReactNode }) {
         // ignore
       }
 
-      // Broadcast to other open tabs immediately
       try {
         if (typeof BroadcastChannel !== 'undefined') {
           const channel = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
@@ -237,7 +188,6 @@ export function MaintenanceProvider({ children }: { children: ReactNode }) {
         // ignore
       }
 
-      // If Supabase is available, sync cloud
       if (isSupabaseConfigured) {
         try {
           await supabase
@@ -247,7 +197,7 @@ export function MaintenanceProvider({ children }: { children: ReactNode }) {
               { onConflict: 'key' }
             );
         } catch {
-          // ignore if table not created
+          // ignore
         }
       }
     },
@@ -301,62 +251,25 @@ export function MaintenanceProvider({ children }: { children: ReactNode }) {
     [config, saveConfig]
   );
 
-  const verifyStaffBypass = useCallback(
-    (inputCode: string) => {
-      const trimmed = inputCode.trim();
-      if (!config.allowStaffBypass) return false;
-      if (trimmed === config.staffBypassCode || trimmed.toUpperCase() === 'BEEADMIN2026') {
-        setStaffBypassed(true);
-        try {
-          sessionStorage.setItem(STAFF_BYPASS_STORAGE_KEY, 'true');
-        } catch {
-          // ignore
-        }
-        return true;
-      }
-      return false;
-    },
-    [config.allowStaffBypass, config.staffBypassCode]
-  );
-
-  const clearStaffBypass = useCallback(() => {
-    setStaffBypassed(false);
-    try {
-      sessionStorage.removeItem(STAFF_BYPASS_STORAGE_KEY);
-    } catch {
-      // ignore
-    }
-  }, []);
-
   const value = useMemo(
     () => ({
       config,
       isMaintenanceBlocking,
-      isPreMaintenanceWarning,
       remainingMs,
-      timeUntilStartMs,
-      staffBypassed,
       saveConfig,
       enableImmediateMaintenance,
       disableMaintenance,
       scheduleMaintenance,
-      verifyStaffBypass,
-      clearStaffBypass,
       refreshMaintenanceStatus,
     }),
     [
       config,
       isMaintenanceBlocking,
-      isPreMaintenanceWarning,
       remainingMs,
-      timeUntilStartMs,
-      staffBypassed,
       saveConfig,
       enableImmediateMaintenance,
       disableMaintenance,
       scheduleMaintenance,
-      verifyStaffBypass,
-      clearStaffBypass,
       refreshMaintenanceStatus,
     ]
   );
