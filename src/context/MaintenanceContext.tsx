@@ -186,25 +186,58 @@ export function MaintenanceProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Sync from Supabase if configured
-  const refreshMaintenanceStatus = useCallback(async () => {
-    if (!isSupabaseConfigured) return;
-
+  // Direct fetch fallback for mobile and tablet browsers
+  const fetchDirectMaintenanceSetting = useCallback(async () => {
     try {
-      const { data, error } = await supabase
-        .from('app_settings')
-        .select('value')
-        .eq('key', 'system_maintenance')
-        .maybeSingle();
-
-      if (!error && data?.value) {
-        const parsed = typeof data.value === 'string' ? JSON.parse(data.value) : data.value;
-        applyNewConfig(parsed);
+      const response = await fetch(
+        `https://yneayotsllbfslziwijm.supabase.co/rest/v1/app_settings?key=eq.system_maintenance&select=value`,
+        {
+          headers: {
+            apikey: 'sb_publishable_d8LQQOSBMM-opWxRA5mTWg_XuwCVTKP',
+            Authorization: 'Bearer sb_publishable_d8LQQOSBMM-opWxRA5mTWg_XuwCVTKP',
+          },
+          cache: 'no-store',
+        }
+      );
+      if (response.ok) {
+        const rows = await response.json();
+        if (Array.isArray(rows) && rows.length > 0 && rows[0]?.value) {
+          const raw = rows[0].value;
+          const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+          applyNewConfig(parsed);
+          return true;
+        }
       }
     } catch {
-      // fallback
+      // ignore
     }
+    return false;
   }, [applyNewConfig]);
+
+  // Sync from Supabase if configured
+  const refreshMaintenanceStatus = useCallback(async () => {
+    // 1. Try direct Supabase JS client
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase
+          .from('app_settings')
+          .select('value')
+          .eq('key', 'system_maintenance')
+          .maybeSingle();
+
+        if (!error && data?.value) {
+          const parsed = typeof data.value === 'string' ? JSON.parse(data.value) : data.value;
+          applyNewConfig(parsed);
+          return;
+        }
+      } catch {
+        // fallback
+      }
+    }
+
+    // 2. HTTP REST direct fetch fallback (vital for mobile Safari / Chrome)
+    await fetchDirectMaintenanceSetting();
+  }, [applyNewConfig, fetchDirectMaintenanceSetting]);
 
   // Realtime multi-device sync, cross-tab listener, and focus/wake listeners
   useEffect(() => {
