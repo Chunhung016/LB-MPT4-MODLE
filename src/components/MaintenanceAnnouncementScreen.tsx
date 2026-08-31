@@ -1,5 +1,5 @@
 import { motion } from 'motion/react';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Clock } from 'lucide-react';
 import PeacefulBeeBackground from './PeacefulBeeBackground';
 import { useMaintenance, ACEBEE_LOGO_URL } from '../context/MaintenanceContext';
 
@@ -33,12 +33,12 @@ export default function MaintenanceAnnouncementScreen({
         initial={{ opacity: 0, scale: 0.96, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ duration: 0.3, ease: 'easeOut' }}
-        className="relative z-10 mx-auto w-full max-w-xl sm:max-w-2xl rounded-[2.2rem] border-4 border-[#FCD34D] bg-white/95 p-6 sm:p-8 shadow-2xl backdrop-blur-md text-center"
+        className="relative z-10 mx-auto w-full max-w-xl sm:max-w-2xl rounded-[2.2rem] border-4 border-[#FCD34D] bg-white/95 p-6 sm:p-7 shadow-2xl backdrop-blur-md text-center"
       >
         {/* ACEBEE Logo with Maintenance Alert Badge */}
         <div className="flex justify-center">
           <div className="relative inline-block">
-            <div className="flex h-20 w-20 sm:h-24 sm:w-24 items-center justify-center overflow-hidden rounded-3xl bg-gradient-to-b from-amber-300 via-amber-400 to-amber-500 p-2 shadow-md border-2 border-white">
+            <div className="flex h-18 w-18 sm:h-22 sm:w-22 items-center justify-center overflow-hidden rounded-3xl bg-gradient-to-b from-amber-300 via-amber-400 to-amber-500 p-2 shadow-md border-2 border-white">
               <img
                 src={logoSrc}
                 alt="ACEBEE"
@@ -56,20 +56,66 @@ export default function MaintenanceAnnouncementScreen({
         {/* Title / Headline */}
         <h1
           id="maintenance-announcement-title"
-          className="mt-4 font-['Fredoka',sans-serif] text-xl sm:text-2xl md:text-3xl font-black text-[#78350F] leading-tight"
+          className="mt-3.5 font-['Fredoka',sans-serif] text-xl sm:text-2xl md:text-3xl font-black text-[#78350F] leading-tight"
         >
           {config.title || 'Scheduled System Maintenance & Cloud Optimization'}
         </h1>
 
         {/* Main Explanation */}
-        <p className="mt-2.5 text-xs sm:text-sm text-slate-600 leading-relaxed max-w-lg mx-auto font-medium">
+        <p className="mt-2 text-xs sm:text-sm text-slate-600 leading-relaxed max-w-lg mx-auto font-medium">
           {config.message ||
             'The ACEBEE Learning Platform is currently undergoing scheduled server upgrades and database optimization to provide your children with a smoother, faster, and more engaging learning experience.'}
         </p>
 
+        {/* Highly Visible Large Countdown Timer Block */}
+        {totalSeconds > 0 && (
+          <div className="mt-4 rounded-2xl border-2 border-amber-300 bg-gradient-to-r from-amber-100/90 via-amber-50 to-amber-100/90 p-3 sm:p-4 shadow-sm">
+            <div className="flex items-center justify-center gap-1.5 text-[11px] sm:text-xs font-black uppercase tracking-wider text-amber-900 mb-2">
+              <Clock className="h-4 w-4 text-amber-600 animate-spin" style={{ animationDuration: '8s' }} />
+              <span>Estimated Reopening Countdown</span>
+            </div>
+
+            <div className="flex items-center justify-center gap-2 sm:gap-3">
+              {hours > 0 && (
+                <>
+                  <div className="flex flex-col items-center">
+                    <span className="flex h-12 w-14 sm:h-14 sm:w-16 items-center justify-center rounded-xl bg-gradient-to-b from-amber-400 to-amber-500 text-xl sm:text-2xl font-black text-white shadow-md border-2 border-amber-200 font-mono tracking-wider">
+                      {String(hours).padStart(2, '0')}
+                    </span>
+                    <span className="mt-1 text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-amber-900">
+                      Hours
+                    </span>
+                  </div>
+                  <span className="text-xl sm:text-2xl font-black text-amber-600 self-start mt-2 sm:mt-3">:</span>
+                </>
+              )}
+
+              <div className="flex flex-col items-center">
+                <span className="flex h-12 w-14 sm:h-14 sm:w-16 items-center justify-center rounded-xl bg-gradient-to-b from-amber-400 to-amber-500 text-xl sm:text-2xl font-black text-white shadow-md border-2 border-amber-200 font-mono tracking-wider">
+                  {String(minutes).padStart(2, '0')}
+                </span>
+                <span className="mt-1 text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-amber-900">
+                  Minutes
+                </span>
+              </div>
+
+              <span className="text-xl sm:text-2xl font-black text-amber-600 self-start mt-2 sm:mt-3">:</span>
+
+              <div className="flex flex-col items-center">
+                <span className="flex h-12 w-14 sm:h-14 sm:w-16 items-center justify-center rounded-xl bg-gradient-to-b from-amber-400 to-amber-500 text-xl sm:text-2xl font-black text-white shadow-md border-2 border-amber-200 font-mono tracking-wider">
+                  {String(seconds).padStart(2, '0')}
+                </span>
+                <span className="mt-1 text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-amber-900">
+                  Seconds
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Sincere Apology Note Card (Picture 2 match) */}
         {config.apologyNote && (
-          <div className="mt-5 rounded-2xl border-2 border-amber-200/90 bg-[#FFFBEB] p-4 sm:p-5 text-left shadow-xs">
+          <div className="mt-3.5 rounded-2xl border-2 border-amber-200/90 bg-[#FFFBEB] p-3.5 sm:p-4 text-left shadow-xs">
             <div className="flex items-start gap-3">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-amber-200/90 text-sm shadow-2xs">
                 ❤️
@@ -78,7 +124,7 @@ export default function MaintenanceAnnouncementScreen({
                 <h2 className="font-['Fredoka',sans-serif] text-xs sm:text-sm font-black text-[#78350F]">
                   {config.apologyTitle || 'A Sincere Note from ACEBEE Team'}
                 </h2>
-                <p className="mt-1 text-xs sm:text-sm text-amber-900/80 leading-relaxed font-medium">
+                <p className="mt-0.5 text-xs sm:text-sm text-amber-900/80 leading-relaxed font-medium">
                   {config.apologyNote}
                 </p>
               </div>
@@ -87,19 +133,14 @@ export default function MaintenanceAnnouncementScreen({
         )}
 
         {/* Status Strip / Restoring Momentarily (Picture 2 match) */}
-        <div className="mt-4 rounded-2xl border border-amber-200/80 bg-amber-50/50 py-3 px-4 text-center">
+        <div className="mt-3 rounded-2xl border border-amber-200/80 bg-amber-50/60 py-2.5 px-4 text-center">
           <p className="text-xs sm:text-sm text-amber-900/90 font-semibold">
             {config.statusNote || 'Our technicians are working actively. System will be restored momentarily.'}
-            {totalSeconds > 0 && (
-              <span className="block mt-1 font-mono text-xs font-bold text-amber-700">
-                (Estimated reopening in {hours > 0 ? `${hours}h ` : ''}{minutes}m {seconds}s)
-              </span>
-            )}
           </p>
         </div>
 
         {previewMode && (
-          <div className="mt-3">
+          <div className="mt-2.5">
             <span className="rounded-full bg-violet-100 px-3 py-0.5 text-[11px] font-bold text-violet-800">
               Admin Live Preview Mode
             </span>
