@@ -29,3 +29,38 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
   },
 });
 
+export async function getFunctionErrorMessage(error: any, data?: any): Promise<string> {
+  if (data?.error && typeof data.error === 'string') {
+    return data.error;
+  }
+  if (error) {
+    if (error.context) {
+      try {
+        const cloned = typeof error.context.clone === 'function' ? error.context.clone() : error.context;
+        if (typeof cloned.json === 'function') {
+          const body = await cloned.json();
+          if (body?.error && typeof body.error === 'string') return body.error;
+          if (body?.message && typeof body.message === 'string') return body.message;
+        }
+      } catch {
+        // try text
+        try {
+          const text = await error.context.text();
+          if (text) return text;
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    if (error.message) {
+      if (error.message.includes('non-2xx status code')) {
+        return 'The account service encountered an issue processing this request. Please check staff permissions.';
+      }
+      return error.message;
+    }
+  }
+
+  return 'Unable to complete the account action. Please try again.';
+}
+

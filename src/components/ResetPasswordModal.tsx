@@ -1,6 +1,6 @@
 import { useState, FormEvent } from 'react';
 import { KeyRound, Check, Copy, Sparkles, X, LoaderCircle, ShieldAlert, CheckCircle2 } from 'lucide-react';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, getFunctionErrorMessage } from '../lib/supabase';
 
 interface ResetPasswordModalProps {
   isOpen: boolean;
@@ -38,6 +38,24 @@ export default function ResetPasswordModal({
     setNewPassword(`${randomPrefix}${randomNum}pass`);
   };
 
+  const updateLocalStoragePassword = () => {
+    try {
+      const raw = localStorage.getItem('little_bee_local_accounts_v1');
+      if (raw) {
+        const accounts = JSON.parse(raw);
+        const normalized = username.toLowerCase().trim();
+        if (accounts[normalized]) {
+          accounts[normalized].password = newPassword;
+          localStorage.setItem('little_bee_local_accounts_v1', JSON.stringify(accounts));
+          return true;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return false;
+  };
+
   const handleReset = async (e: FormEvent) => {
     e.preventDefault();
     if (!newPassword || newPassword.length < 8) {
@@ -49,28 +67,20 @@ export default function ResetPasswordModal({
     setError(null);
 
     try {
-      if (!isSupabaseConfigured) {
-        // Local accounts fallback
-        try {
-          const raw = localStorage.getItem('little_bee_local_accounts_v1');
-          if (raw) {
-            const accounts = JSON.parse(raw);
-            const normalized = username.toLowerCase().trim();
-            if (accounts[normalized]) {
-              accounts[normalized].password = newPassword;
-              localStorage.setItem('little_bee_local_accounts_v1', JSON.stringify(accounts));
-            }
-          }
-        } catch {
-          // ignore
-        }
+      const isLocal = !isSupabaseConfigured || userId.startsWith('local_');
+
+      if (isLocal) {
+        updateLocalStoragePassword();
         setSuccess(true);
         onSuccess();
         setBusy(false);
         return;
       }
 
-      // Try invoking manage-parent-account edge function
+      // Keep local store in sync
+      updateLocalStoragePassword();
+
+      // Try invoking manage-parent-account edge function with update_password
       const { data, error: funcError } = await supabase.functions.invoke('manage-parent-account', {
         body: {
           action: 'update_password',
@@ -81,19 +91,19 @@ export default function ResetPasswordModal({
       });
 
       if (funcError || data?.error) {
-        // Fallback: try alternative action names or admin rpc if supported
-        const { error: altError } = await supabase.rpc('admin_set_parent_password', {
-          p_user_id: userId,
-          p_password: newPassword,
+        // Fallback: try reset_password action name in case of version differences
+        const { data: retryData, error: retryError } = await supabase.functions.invoke('manage-parent-account', {
+          body: {
+            action: 'reset_password',
+            userId,
+            password: newPassword,
+            username,
+          },
         });
 
-        if (altError) {
-          setError(
-            data?.error ??
-              funcError?.message ??
-              altError.message ??
-              'Unable to update password via edge function. Please check staff permissions.'
-          );
+        if (retryError || retryData?.error) {
+          const finalErrMsg = await getFunctionErrorMessage(retryError || funcError, retryData || data);
+          setError(finalErrMsg);
           setBusy(false);
           return;
         }

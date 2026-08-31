@@ -35,7 +35,7 @@ import BulkImportModal from './BulkImportModal';
 import PrintableRosterModal, { RosterItem } from './PrintableRosterModal';
 import AdminMaintenanceTab from './AdminMaintenanceTab';
 import { useMaintenance } from '../context/MaintenanceContext';
-import { isSupabaseConfigured, supabase } from '../lib/supabase';
+import { isSupabaseConfigured, supabase, getFunctionErrorMessage } from '../lib/supabase';
 import { exportToCSV, exportToJSON } from '../utils/csvHelper';
 
 interface EntitlementRow {
@@ -418,7 +418,8 @@ export default function AdminPortal() {
     });
 
     if (error || data?.error) {
-      setDataError(data?.error ?? error?.message ?? 'Unable to create the parent account.');
+      const msg = await getFunctionErrorMessage(error, data);
+      setDataError(msg || 'Unable to create the parent account.');
     } else {
       setNewParent({ username: '', password: '', parentName: '', childName: '', contactPhone: '' });
       setShowAddParent(false);
@@ -586,7 +587,8 @@ _If you need your password reset, please contact reception!_`;
     });
 
     if (error || data?.error) {
-      setDataError(data?.error ?? error?.message ?? 'Unable to delete the parent account.');
+      const msg = await getFunctionErrorMessage(error, data);
+      setDataError(msg || 'Unable to delete the parent account.');
     } else {
       await loadDevices();
     }

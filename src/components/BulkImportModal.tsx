@@ -13,7 +13,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { parseCSV, generateSampleCSV, ParentImportRecord } from '../utils/csvHelper';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, getFunctionErrorMessage } from '../lib/supabase';
 
 interface BulkImportModalProps {
   isOpen: boolean;
@@ -190,7 +190,8 @@ export default function BulkImportModal({ isOpen, onClose, onSuccess }: BulkImpo
 
         if (error || data?.error) {
           failCount++;
-          errors.push(`@${row.username}: ${data?.error || error?.message || 'Creation failed'}`);
+          const errMsg = await getFunctionErrorMessage(error, data);
+          errors.push(`@${row.username}: ${errMsg}`);
         } else {
           successCount++;
           // Optionally add tokens if specified > 0

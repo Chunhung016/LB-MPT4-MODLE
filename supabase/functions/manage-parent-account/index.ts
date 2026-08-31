@@ -14,6 +14,12 @@ type ManageParentRequest =
       contactPhone?: string;
     }
   | {
+      action: 'update_password' | 'reset_password';
+      userId: string;
+      password: string;
+      username?: string;
+    }
+  | {
       action: 'delete';
       userId: string;
     };
@@ -78,6 +84,38 @@ export default {
         }
 
         return Response.json({ userId: data.user.id, username });
+      }
+
+      if (body.action === 'update_password' || body.action === 'reset_password') {
+        const userId = cleanText(body.userId, 64);
+        const password = typeof body.password === 'string' ? body.password : '';
+
+        if (!userId) {
+          return Response.json({ error: 'User ID is required.' }, { status: 400 });
+        }
+        if (password.length < 8 || password.length > 72) {
+          return Response.json({ error: 'Password must be 8–72 characters.' }, { status: 400 });
+        }
+
+        const { data: targetProfile, error: profileErr } = await context.supabaseAdmin
+          .from('parent_profiles')
+          .select('user_id, username')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+        if (profileErr || !targetProfile) {
+          return Response.json({ error: 'Parent account not found.' }, { status: 404 });
+        }
+
+        const { error: updateError } = await context.supabaseAdmin.auth.admin.updateUserById(userId, {
+          password,
+        });
+
+        if (updateError) {
+          return Response.json({ error: updateError.message }, { status: 400 });
+        }
+
+        return Response.json({ success: true, userId, username: targetProfile.username });
       }
 
       if (body.action === 'delete') {
