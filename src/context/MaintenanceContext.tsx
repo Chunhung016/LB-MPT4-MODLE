@@ -122,17 +122,18 @@ export function MaintenanceProvider({ children }: { children: ReactNode }) {
     const startMs = config.scheduledStart ? new Date(config.scheduledStart).getTime() : null;
     const endMs = config.scheduledEnd ? new Date(config.scheduledEnd).getTime() : null;
 
-    // If scheduled for a future start time, do not block yet
-    if (startMs && now < startMs) {
+    // To prevent clock-skew issues on mobile devices (e.g. iPad clock is a few minutes behind),
+    // only delay the block if the start time is significantly in the future (> 5 mins)
+    if (startMs && startMs - now > 5 * 60 * 1000) {
       return { isMaintenanceBlocking: false, remainingMs: endMs ? Math.max(0, endMs - now) : 0 };
     }
 
-    // If scheduled end time has been reached, automatically unlock the app!
-    if (endMs && now >= endMs) {
-      return { isMaintenanceBlocking: false, remainingMs: 0 };
-    }
-
+    // We do NOT automatically unlock based on the client's clock (now >= endMs).
+    // Client clocks (especially on iPads/phones) can be easily misconfigured or set 
+    // to the future, which would bypass the maintenance screen instantly.
+    // The system remains locked until `config.isActive` is explicitly set to false by admin.
     const remaining = endMs ? Math.max(0, endMs - now) : 0;
+    
     return {
       isMaintenanceBlocking: true,
       remainingMs: remaining,
@@ -166,6 +167,25 @@ export function MaintenanceProvider({ children }: { children: ReactNode }) {
     setHasDismissedCurrentRelease(true);
   }, [config.postMaintenanceChangelog?.releaseId]);
 
+  // Helper to apply and cache fresh config
+  const applyNewConfig = useCallback((parsed: any) => {
+    if (!parsed) return;
+    const merged: SystemMaintenanceConfig = {
+      ...DEFAULT_MAINTENANCE_CONFIG,
+      ...parsed,
+      postMaintenanceChangelog: {
+        ...DEFAULT_POST_MAINTENANCE_CHANGELOG,
+        ...(parsed.postMaintenanceChangelog || {}),
+      },
+    };
+    setConfig(merged);
+    try {
+      localStorage.setItem(MAINTENANCE_STORAGE_KEY, JSON.stringify(merged));
+    } catch {
+      // ignore
+    }
+  }, []);
+
   // Sync from Supabase if configured
   const refreshMaintenanceStatus = useCallback(async () => {
     if (!isSupabaseConfigured) return;
@@ -179,27 +199,14 @@ export function MaintenanceProvider({ children }: { children: ReactNode }) {
 
       if (!error && data?.value) {
         const parsed = typeof data.value === 'string' ? JSON.parse(data.value) : data.value;
-        const merged: SystemMaintenanceConfig = {
-          ...DEFAULT_MAINTENANCE_CONFIG,
-          ...parsed,
-          postMaintenanceChangelog: {
-            ...DEFAULT_POST_MAINTENANCE_CHANGELOG,
-            ...(parsed.postMaintenanceChangelog || {}),
-          },
-        };
-        setConfig(merged);
-        try {
-          localStorage.setItem(MAINTENANCE_STORAGE_KEY, JSON.stringify(merged));
-        } catch {
-          // ignore
-        }
+        applyNewConfig(parsed);
       }
     } catch {
       // fallback
     }
-  }, []);
+  }, [applyNewConfig]);
 
-  // Cross-tab broadcast listener
+  // Realtime multi-device sync, cross-tab listener, and focus/wake listeners
   useEffect(() => {
     let broadcastChannel: BroadcastChannel | null = null;
     try {
@@ -207,7 +214,7 @@ export function MaintenanceProvider({ children }: { children: ReactNode }) {
         broadcastChannel = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
         broadcastChannel.onmessage = (event) => {
           if (event.data?.type === 'MAINTENANCE_UPDATE' && event.data?.config) {
-            setConfig(event.data.config);
+            applyNewConfig(event.data.config);
           }
         };
       }
@@ -219,33 +226,74 @@ export function MaintenanceProvider({ children }: { children: ReactNode }) {
       if (event.key === MAINTENANCE_STORAGE_KEY && event.newValue) {
         try {
           const parsed = JSON.parse(event.newValue);
-          setConfig({
-            ...DEFAULT_MAINTENANCE_CONFIG,
-            ...parsed,
-            postMaintenanceChangelog: {
-              ...DEFAULT_POST_MAINTENANCE_CHANGELOG,
-              ...(parsed.postMaintenanceChangelog || {}),
-            },
-          });
+          applyNewConfig(parsed);
         } catch {
           // ignore
         }
       }
     };
 
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshMaintenanceStatus();
+      }
+    };
+
     window.addEventListener('storage', handleStorage);
+    window.addEventListener('focus', handleVisibilityOrFocus);
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+
+    // Initial fetch
     void refreshMaintenanceStatus();
 
+    // Setup Supabase Realtime channel for instant cross-device updates (Laptop -> iPad -> Mobile)
+    let realtimeChannel: any = null;
+    if (isSupabaseConfigured) {
+      try {
+        realtimeChannel = supabase
+          .channel('acebee_maintenance_realtime')
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'app_settings',
+              filter: 'key=eq.system_maintenance',
+            },
+            (payload) => {
+              if (payload.new && (payload.new as any).value) {
+                const rawVal = (payload.new as any).value;
+                const parsed = typeof rawVal === 'string' ? JSON.parse(rawVal) : rawVal;
+                applyNewConfig(parsed);
+              }
+            }
+          )
+          .subscribe();
+      } catch (err) {
+        console.warn('Realtime subscription setup skipped:', err);
+      }
+    }
+
+    // Rapid fallback poll interval (every 6s) to ensure mobile devices sync without delay
     const pollInterval = setInterval(() => {
       void refreshMaintenanceStatus();
-    }, 20000);
+    }, 6000);
 
     return () => {
       broadcastChannel?.close();
       window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      if (realtimeChannel) {
+        try {
+          supabase.removeChannel(realtimeChannel);
+        } catch {
+          // ignore
+        }
+      }
       clearInterval(pollInterval);
     };
-  }, [refreshMaintenanceStatus]);
+  }, [refreshMaintenanceStatus, applyNewConfig]);
 
   const saveConfig = useCallback(
     async (nextConfig: SystemMaintenanceConfig) => {
@@ -253,13 +301,7 @@ export function MaintenanceProvider({ children }: { children: ReactNode }) {
         ...nextConfig,
         updatedAt: new Date().toISOString(),
       };
-      setConfig(updated);
-
-      try {
-        localStorage.setItem(MAINTENANCE_STORAGE_KEY, JSON.stringify(updated));
-      } catch {
-        // ignore
-      }
+      applyNewConfig(updated);
 
       try {
         if (typeof BroadcastChannel !== 'undefined') {
@@ -273,18 +315,26 @@ export function MaintenanceProvider({ children }: { children: ReactNode }) {
 
       if (isSupabaseConfigured) {
         try {
-          await supabase
+          const { error: upsertError } = await supabase
             .from('app_settings')
             .upsert(
               { key: 'system_maintenance', value: updated, updated_at: new Date().toISOString() },
               { onConflict: 'key' }
             );
-        } catch {
-          // ignore
+
+          if (upsertError) {
+            // Try helper RPC as secondary avenue
+            await supabase.rpc('set_app_setting', {
+              p_key: 'system_maintenance',
+              p_value: updated,
+            });
+          }
+        } catch (err) {
+          console.error('Failed to sync maintenance config to Supabase:', err);
         }
       }
     },
-    []
+    [applyNewConfig]
   );
 
   const enableImmediateMaintenance = useCallback(
