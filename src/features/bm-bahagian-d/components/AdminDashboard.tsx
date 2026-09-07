@@ -25,6 +25,7 @@ import { useApp } from '../context/AppContext';
 import { PRESET_BOX_PICTURES, DEFAULT_OVERLAY_IMAGE } from '../utils/defaultSettings';
 import { sound } from '../utils/audio';
 import { formatImgurUrl } from '../utils/imgur';
+import { SafeImgurImage } from './SafeImgurImage';
 
 export const AdminDashboard: React.FC = () => {
   const {
@@ -428,11 +429,10 @@ export const AdminDashboard: React.FC = () => {
                           <div className="flex gap-3">
                             {/* 1:1 Aspect Ratio Thumbnail */}
                             <div className="w-24 h-24 sm:w-28 sm:h-28 aspect-square rounded-xl border-2 border-[#78350F] bg-[#FEF3C7]/40 p-1 flex items-center justify-center shrink-0 overflow-hidden relative">
-                              <img
-                                src={formatImgurUrl(piece.imageUrl)}
+                              <SafeImgurImage
+                                src={piece.imageUrl}
                                 alt={piece.altText}
                                 className="w-full h-full object-contain"
-                                referrerPolicy="no-referrer"
                               />
                             </div>
 

@@ -3,94 +3,232 @@ import { AppSettings, HotspotPoint, PuzzlePiece, BoxScreenConfig } from '../type
 export const DEFAULT_OVERLAY_IMAGE = 'https://i.postimg.cc/ZnZphXT9/image.png';
 
 export const PRESET_BOX_PICTURES: { label: string; url: string }[] = [
-  {
-    label: 'Gambar 1 (Perlawanan Lari Guni)',
-    url: 'https://i.postimg.cc/ZnZphXT9/image.png',
-  },
-  {
-    label: 'Gambar 2 (Perbarisan Lintas Hormat)',
-    url: 'https://i.postimg.cc/zvb2KSSd/Chat-GPT-Image-2026nian8yue17ri-15-40-54-(1).png',
-  },
-  {
-    label: 'Gambar 3 (Penyampaian Pingat Hari Sukan)',
-    url: 'https://i.postimg.cc/NjMDHxs9/Chat-GPT-Image-2026nian8yue17ri-15-40-54-(3).png',
-  },
+  // Pendahuluan
+  { label: 'Pendahuluan 1 (Hari Sukan)', url: 'https://imgur.com/r2JmHcz' },
+  { label: 'Pendahuluan 2 (Berkumpul di Padang)', url: 'https://imgur.com/p9TQkCc' },
+  { label: 'Pendahuluan 3 (Meriah dan Ceria)', url: 'https://imgur.com/ZMFHTJa' },
+  // Isi 1
+  { label: 'Isi 1 - 1 (Acara Dimulakan)', url: 'https://imgur.com/rN7yyV0' },
+  { label: 'Isi 1 - 2 (Lompat Jauh Pasir)', url: 'https://imgur.com/wMfJZ8h' },
+  { label: 'Isi 1 - 3 (Mencatat Jarak)', url: 'https://imgur.com/5Rs7NYk' },
+  // Isi 2
+  { label: 'Isi 2 - 1 (Lari Berganti-ganti)', url: 'https://imgur.com/mAFxSC5' },
+  { label: 'Isi 2 - 2 (Membawa Baton)', url: 'https://imgur.com/yqnMN9e' },
+  { label: 'Isi 2 - 3 (Murid Bersorak)', url: 'https://imgur.com/FFZaGSj' },
+  // Isi 3
+  { label: 'Isi 3 - 1 (Berehat di Khemah)', url: 'https://imgur.com/iT8AC5c' },
+  { label: 'Isi 3 - 2 (Memberikan Minuman)', url: 'https://imgur.com/fctEbXR' },
+  { label: 'Isi 3 - 3 (Menikmati Minuman)', url: 'https://imgur.com/erqQ9SZ' },
+  // Isi 4
+  { label: 'Isi 4 - 1 (Murid Terjatuh)', url: 'https://imgur.com/C8l5Rud' },
+  { label: 'Isi 4 - 2 (Menyapu Ubat)', url: 'https://imgur.com/sgjhLLQ' },
+  // Penutup
+  { label: 'Penutup 1 (Hari Sukan Tamat)', url: 'https://imgur.com/IqIGtTo' },
+  { label: 'Penutup 2 (Berasa Gembira)', url: 'https://imgur.com/kEv1Oda' },
 ];
 
 export const DEFAULT_HOTSPOTS: HotspotPoint[] = [];
 
-export const DEFAULT_PUZZLE_PIECES_SCREEN_1: PuzzlePiece[] = [
-  {
-    id: 1,
-    targetBox: 1,
-    imageUrl: 'https://i.postimg.cc/zvb2KSSd/Chat-GPT-Image-2026nian8yue17ri-15-40-54-(1).png',
-    altText: 'Hari Sukan Permulaan',
-    caption: 'Gambar 1',
-    sentence: 'Pada hari Sabtu yang lalu, sekolah saya telah mengadakan temasya Hari Sukan Tahunan yang sangat meriah.',
-  },
-  {
-    id: 2,
-    targetBox: 2,
-    imageUrl: 'https://i.postimg.cc/ZnZphXT9/image.png',
-    altText: 'Semua Murid Berkumpul',
-    caption: 'Gambar 2',
-    sentence: 'Semua murid berkumpul di padang sekolah dengan memakai baju sukan mengikut rumah masing-masing.',
-  },
-  {
-    id: 3,
-    targetBox: 3,
-    imageUrl: 'https://i.postimg.cc/NjMDHxs9/Chat-GPT-Image-2026nian8yue17ri-15-40-54-(3).png',
-    altText: 'Hiasan Bendera Meriah',
-    caption: 'Gambar 3',
-    sentence: 'Padang sekolah juga dihiasi dengan bendera dan belon yang berwarna-warni bagi menceriakan suasana.',
-  },
-];
-
-export const DEFAULT_PUZZLE_PIECES_SCREEN_2: PuzzlePiece[] = [
+export const DEFAULT_PUZZLE_PIECES_PENDAHULUAN: PuzzlePiece[] = [
   {
     id: 101,
     targetBox: 1,
-    imageUrl: 'https://i.postimg.cc/zvb2KSSd/Chat-GPT-Image-2026nian8yue17ri-15-40-54-(1).png',
-    altText: 'Acara Perbarisan Mulai',
-    caption: 'Gambar 1',
-    sentence: 'Acara sukan dimulakan dengan upacara perbarisan lintas hormat oleh pasukan rumah sukan.',
+    imageUrl: 'https://imgur.com/r2JmHcz',
+    altText: 'Sekolah Mengadakan Hari Sukan',
+    caption: 'Kotak 1',
+    sentence: 'Pada hari Sabtu yang lalu, sekolah saya mengadakan hari sukan.',
   },
   {
     id: 102,
     targetBox: 2,
-    imageUrl: 'https://i.postimg.cc/ZnZphXT9/image.png',
-    altText: 'Lari dalam guni dan Tarik tali',
-    caption: 'Gambar 2',
-    sentence: 'Pelbagai acara sukaneka yang menarik telah dijalankan seperti lari dalam guni dan tarik tali.',
+    imageUrl: 'https://imgur.com/p9TQkCc',
+    altText: 'Guru dan Murid Berkumpul di Padang',
+    caption: 'Kotak 2',
+    sentence: 'Seawal pagi, para guru dan murid sudah berkumpul di padang sekolah.',
   },
   {
     id: 103,
     targetBox: 3,
-    imageUrl: 'https://i.postimg.cc/NjMDHxs9/Chat-GPT-Image-2026nian8yue17ri-15-40-54-(3).png',
-    altText: 'Penyampaian pingat dan hadiah',
-    caption: 'Gambar 3',
-    sentence: 'Pada akhir temasya, Guru Besar menyampaikan pingat dan piala kepada para pemenang yang gembira.',
+    imageUrl: 'https://imgur.com/ZMFHTJa',
+    altText: 'Suasana Sangat Meriah dan Ceria',
+    caption: 'Kotak 3',
+    sentence: 'Suasana sangat meriah dan ceria.',
+  },
+];
+
+export const DEFAULT_PUZZLE_PIECES_ISI_1: PuzzlePiece[] = [
+  {
+    id: 201,
+    targetBox: 1,
+    imageUrl: 'https://imgur.com/rN7yyV0',
+    altText: 'Acara Sukan Dimulakan',
+    caption: 'Kotak 1',
+    sentence: 'Pada pukul 8.00 pagi, acara sukan pun dimulakan.',
+  },
+  {
+    id: 202,
+    targetBox: 2,
+    imageUrl: 'https://imgur.com/wMfJZ8h',
+    altText: 'Peserta Lompat Jauh',
+    caption: 'Kotak 2',
+    sentence: 'Para peserta lompat jauh berlari dengan pantas sebelum melompat ke dalam pasir.',
+  },
+  {
+    id: 203,
+    targetBox: 3,
+    imageUrl: 'https://imgur.com/5Rs7NYk',
+    altText: 'Guru Bertugas Mencatat Jarak',
+    caption: 'Kotak 3',
+    sentence: 'Guru bertugas mencatat jarak lompatan setiap peserta.',
+  },
+];
+
+export const DEFAULT_PUZZLE_PIECES_ISI_2: PuzzlePiece[] = [
+  {
+    id: 301,
+    targetBox: 1,
+    imageUrl: 'https://imgur.com/mAFxSC5',
+    altText: 'Acara Lari Berganti-ganti Bermula',
+    caption: 'Kotak 1',
+    sentence: 'Kemudian, acara lari berganti-ganti 4×100 meter pula bermula.',
+  },
+  {
+    id: 302,
+    targetBox: 2,
+    imageUrl: 'https://imgur.com/yqnMN9e',
+    altText: 'Peserta Berlari Membawa Baton',
+    caption: 'Kotak 2',
+    sentence: 'Para peserta berlari dengan bersungguh-sungguh sambil membawa baton.',
+  },
+  {
+    id: 303,
+    targetBox: 3,
+    imageUrl: 'https://imgur.com/FFZaGSj',
+    altText: 'Murid Bersorak Sorai Memberi Sokongan',
+    caption: 'Kotak 3',
+    sentence: 'Murid-murid bersorak sorai untuk memberikan sokongan.',
+  },
+];
+
+export const DEFAULT_PUZZLE_PIECES_ISI_3: PuzzlePiece[] = [
+  {
+    id: 401,
+    targetBox: 1,
+    imageUrl: 'https://imgur.com/iT8AC5c',
+    altText: 'Berehat di Khemah',
+    caption: 'Kotak 1',
+    sentence: 'Selepas itu, kami berehat di khemah.',
+  },
+  {
+    id: 402,
+    targetBox: 2,
+    imageUrl: 'https://imgur.com/fctEbXR',
+    altText: 'Guru Memberikan Minuman',
+    caption: 'Kotak 2',
+    sentence: 'Guru memberikan minuman kepada murid-murid yang keletihan.',
+  },
+  {
+    id: 403,
+    targetBox: 3,
+    imageUrl: 'https://imgur.com/erqQ9SZ',
+    altText: 'Duduk Berbual dan Menikmati Minuman',
+    caption: 'Kotak 3',
+    sentence: 'Kami duduk sambil berbual dan menikmati minuman.',
+  },
+];
+
+export const DEFAULT_PUZZLE_PIECES_ISI_4: PuzzlePiece[] = [
+  {
+    id: 501,
+    targetBox: 1,
+    imageUrl: 'https://imgur.com/C8l5Rud',
+    altText: 'Murid Terjatuh dan Lutut Luka',
+    caption: 'Kotak 1',
+    sentence: 'Tiba-tiba, seorang murid terjatuh dan lututnya luka.',
+  },
+  {
+    id: 502,
+    targetBox: 2,
+    imageUrl: 'https://imgur.com/sgjhLLQ',
+    altText: 'Guru Memapah dan Menyapu Ubat',
+    caption: 'Kotak 2',
+    sentence: 'Guru segera memapahnya lalu menyapu ubat pada lukanya.',
+  },
+];
+
+export const DEFAULT_PUZZLE_PIECES_PENUTUP: PuzzlePiece[] = [
+  {
+    id: 601,
+    targetBox: 1,
+    imageUrl: 'https://imgur.com/IqIGtTo',
+    altText: 'Hari Sukan Tamat',
+    caption: 'Kotak 1',
+    sentence: 'Pada pukul 1.00 tengah hari, hari sukan pun tamat.',
+  },
+  {
+    id: 602,
+    targetBox: 2,
+    imageUrl: 'https://imgur.com/kEv1Oda',
+    altText: 'Berasa Gembira Menyertai Acara',
+    caption: 'Kotak 2',
+    sentence: 'Walaupun penat, kami berasa gembira kerana dapat menyertai acara yang menyeronokkan ini.',
   },
 ];
 
 export const DEFAULT_BOX_SCREENS: BoxScreenConfig[] = [
   {
-    id: 'box-screen-1',
-    title: 'Aktiviti 1: Permulaan Hari Sukan Tahunan',
-    description: 'Menyusun urutan pembukaan temasya sukan tahunan sekolah.',
+    id: 'box-screen-pendahuluan',
+    title: 'Pendahuluan',
+    description: 'Menyusun urutan gambar perenggan pendahuluan Hari Sukan.',
     boxCount: 3,
-    puzzlePieces: DEFAULT_PUZZLE_PIECES_SCREEN_1,
-    candidateBlankWords: ['Sabtu', 'Sukan', 'padang', 'sukan', 'warna-warni'],
-    blankWordsCount: 4,
+    puzzlePieces: DEFAULT_PUZZLE_PIECES_PENDAHULUAN,
+    candidateBlankWords: ['Sabtu', 'sukan', 'padang', 'berkumpul', 'meriah', 'ceria'],
+    blankWordsCount: 3,
   },
   {
-    id: 'box-screen-2',
-    title: 'Aktiviti 2: Acara Menarik & Penyampaian Piala',
-    description: 'Menyusun urutan aktiviti sukaneka dan upacara penutupan temasya.',
+    id: 'box-screen-isi-1',
+    title: 'Isi 1',
+    description: 'Menyusun urutan acara permulaan dan lompat jauh.',
     boxCount: 3,
-    puzzlePieces: DEFAULT_PUZZLE_PIECES_SCREEN_2,
-    candidateBlankWords: ['perbarisan', 'sukaneka', 'guni', 'piala', 'pemenang'],
+    puzzlePieces: DEFAULT_PUZZLE_PIECES_ISI_1,
+    candidateBlankWords: ['acara', 'pantas', 'lompat', 'pasir', 'mencatat', 'peserta'],
     blankWordsCount: 3,
+  },
+  {
+    id: 'box-screen-isi-2',
+    title: 'Isi 2',
+    description: 'Menyusun urutan acara lari berganti-ganti dan sorakan penyokong.',
+    boxCount: 3,
+    puzzlePieces: DEFAULT_PUZZLE_PIECES_ISI_2,
+    candidateBlankWords: ['berganti-ganti', 'berlari', 'baton', 'bersorak', 'sokongan'],
+    blankWordsCount: 3,
+  },
+  {
+    id: 'box-screen-isi-3',
+    title: 'Isi 3',
+    description: 'Menyusun urutan berehat di khemah dan menikmati minuman.',
+    boxCount: 3,
+    puzzlePieces: DEFAULT_PUZZLE_PIECES_ISI_3,
+    candidateBlankWords: ['berehat', 'khemah', 'minuman', 'keletihan', 'berbual', 'menikmati'],
+    blankWordsCount: 3,
+  },
+  {
+    id: 'box-screen-isi-4',
+    title: 'Isi 4',
+    description: 'Menyusun urutan rawatan kecemasan murid yang terjatuh.',
+    boxCount: 2,
+    puzzlePieces: DEFAULT_PUZZLE_PIECES_ISI_4,
+    candidateBlankWords: ['terjatuh', 'lututnya', 'luka', 'memapahnya', 'menyapu', 'ubat'],
+    blankWordsCount: 2,
+  },
+  {
+    id: 'box-screen-penutup',
+    title: 'Penutup',
+    description: 'Menyusun urutan penutupan Hari Sukan dan perasaan murid.',
+    boxCount: 2,
+    puzzlePieces: DEFAULT_PUZZLE_PIECES_PENUTUP,
+    candidateBlankWords: ['tengah', 'tamat', 'penat', 'gembira', 'menyeronokkan'],
+    blankWordsCount: 2,
   },
 ];
 
@@ -121,9 +259,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   // Global Flow Toggles
   shufflePieces: true,
   enableContinuousEssay: true,
-  postArrangeWaitSeconds: 0,
-  enableCountdownOverlay: false,
-  countdownSeconds: 3,
+  postArrangeWaitSeconds: 30,
+  enableCountdownOverlay: true,
+  countdownSeconds: 30,
   enableFillInBlanks: true,
   enableConfetti: true,
   enableTTSOnPlacement: false,
@@ -143,7 +281,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   showFloatingHexagons: true,
 };
 
-export const SETTINGS_STORAGE_KEY = 'edu_bee_app_settings_v10'; // updated version key to refresh user localStorage
+export const SETTINGS_STORAGE_KEY = 'edu_bee_app_settings_v13'; // updated version key for 30s countdown and randomization
 
 export function loadSettings(): AppSettings {
   if (typeof window === 'undefined') return DEFAULT_SETTINGS;

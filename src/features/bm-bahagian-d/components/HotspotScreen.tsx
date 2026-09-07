@@ -2,7 +2,7 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { Trophy } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { formatImgurUrl } from '../utils/imgur';
+import { SafeImgurImage } from './SafeImgurImage';
 import { sound } from '../utils/audio';
 
 interface HotspotScreenProps {
@@ -67,11 +67,10 @@ export const HotspotScreen: React.FC<HotspotScreenProps> = ({ onNext, onBack }) 
           onClick={handleProceed}
           className="relative w-full bg-white rounded-3xl overflow-hidden border-4 border-[#78350F] shadow-[8px_8px_0px_#FDE68A] flex items-center justify-center cursor-pointer transition-all hover:border-[#10B981] group"
         >
-          <img
-            src={formatImgurUrl(settings.sceneImageUrl) || 'https://i.imgur.com/g4RIcQr.png'}
+          <SafeImgurImage
+            src={settings.sceneImageUrl || 'https://i.imgur.com/g4RIcQr.png'}
             alt={settings.appName || 'Suasana Hari Sukan Sekolah'}
             className="w-full h-auto max-h-[60vh] object-contain bg-[#FFFBEB] transition-transform group-hover:scale-[1.005]"
-            referrerPolicy="no-referrer"
             draggable={false}
           />
         </motion.div>

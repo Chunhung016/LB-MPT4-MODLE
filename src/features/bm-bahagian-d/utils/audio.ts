@@ -226,6 +226,10 @@ class SoundEffects {
   }
 
   // Grand celebration fanfare
+  public playFanfare() {
+    this.playCelebration();
+  }
+
   public playCelebration() {
     if (this.isMuted || !this.fanfareEnabled) return;
     const ctx = this.getContext();

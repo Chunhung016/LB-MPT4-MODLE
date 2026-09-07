@@ -5,15 +5,15 @@ import {
   CheckCircle2,
   Volume2,
   BookOpen,
-  Trophy,
-  Sliders,
   ArrowRight,
   ArrowLeft,
+  Timer,
 } from 'lucide-react';
 import { PuzzlePiece } from '../types';
 import { sound } from '../utils/audio';
 import { useApp } from '../context/AppContext';
 import { formatImgurUrl } from '../utils/imgur';
+import { SafeImgurImage } from './SafeImgurImage';
 import confetti from 'canvas-confetti';
 
 interface StoryPuzzleScreenProps {
@@ -21,18 +21,30 @@ interface StoryPuzzleScreenProps {
   onRestart?: () => void;
 }
 
+function shufflePuzzlePieces(pieces: PuzzlePiece[]): PuzzlePiece[] {
+  if (pieces.length <= 1) return [...pieces];
+  const arr = [...pieces];
+  for (let attempt = 0; attempt < 10; attempt++) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    // Guarantee that pieces are not in consecutive targetBox 1, 2, 3... order
+    const isSequential = arr.every((item, idx) => item.targetBox === idx + 1);
+    if (!isSequential) {
+      return arr;
+    }
+  }
+  // Force swap first two if still in sorted order
+  [arr[0], arr[1]] = [arr[1], arr[0]];
+  return arr;
+}
+
 function shuffleArray<T>(array: T[]): T[] {
   const arr = [...array];
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  if (
-    arr.length > 2 &&
-    (arr[0] as unknown as PuzzlePiece).targetBox === 1 &&
-    (arr[1] as unknown as PuzzlePiece).targetBox === 2
-  ) {
-    [arr[0], arr[1]] = [arr[1], arr[0]];
   }
   return arr;
 }
@@ -43,8 +55,6 @@ export const StoryPuzzleScreen: React.FC<StoryPuzzleScreenProps> = () => {
     activeBoxScreen,
     activeBoxScreenIndex,
     setActiveBoxScreenIndex,
-    setIsAdminOpen,
-    setAdminTab,
   } = useApp();
 
   const totalScreens = settings.boxScreens.length;
@@ -67,6 +77,9 @@ export const StoryPuzzleScreen: React.FC<StoryPuzzleScreenProps> = () => {
   const [wrongMessage, setWrongMessage] = useState<string | null>(null);
   const [isCompleted, setIsCompleted] = useState(false);
 
+  // 30-second countdown state before fill-in-blanks
+  const [countdownRemaining, setCountdownRemaining] = useState<number | null>(null);
+
   // Fill in the blanks mode state
   const [fillInBlanksMode, setFillInBlanksMode] = useState(false);
   const [selectedBlanks, setSelectedBlanks] = useState<string[]>([]);
@@ -81,11 +94,8 @@ export const StoryPuzzleScreen: React.FC<StoryPuzzleScreenProps> = () => {
     });
     setPlacedPieces(initialPlaced);
 
-    if (settings.shufflePieces) {
-      setAvailablePieces(shuffleArray(activePieces));
-    } else {
-      setAvailablePieces([...activePieces]);
-    }
+    // ALWAYS randomize puzzle pieces so they are never in pre-solved order
+    setAvailablePieces(shufflePuzzlePieces(activePieces));
 
     setSelectedPieceId(null);
     setIsCompleted(false);
@@ -95,7 +105,8 @@ export const StoryPuzzleScreen: React.FC<StoryPuzzleScreenProps> = () => {
     setQuizPassed(false);
     setWrongBox(null);
     setWrongMessage(null);
-  }, [activePieces, settings.shufflePieces, targetBoxNumbers]);
+    setCountdownRemaining(null);
+  }, [activePieces, targetBoxNumbers]);
 
   useEffect(() => {
     initializePieces();
@@ -124,6 +135,40 @@ export const StoryPuzzleScreen: React.FC<StoryPuzzleScreenProps> = () => {
     setFillInBlanksMode(true);
   }, [activeBoxScreen.candidateBlankWords, activeBoxScreen.blankWordsCount]);
 
+  const handleSkipCountdown = () => {
+    sound.playPop();
+    setCountdownRemaining(null);
+    startQuizDirectly();
+  };
+
+  // 30-second countdown effect after all pictures are placed
+  useEffect(() => {
+    if (countdownRemaining === null) return;
+
+    if (countdownRemaining <= 0) {
+      setCountdownRemaining(null);
+      startQuizDirectly();
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setCountdownRemaining((prev) => {
+        if (prev === null) return null;
+        if (prev <= 1) {
+          clearInterval(timer);
+          startQuizDirectly();
+          return null;
+        }
+        if (prev <= 4) {
+          sound.playCountdownBeep(prev === 2);
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [countdownRemaining, startQuizDirectly]);
+
   // Triggered when all pictures are arranged correctly
   useEffect(() => {
     if (allCorrect && !isCompleted) {
@@ -139,11 +184,11 @@ export const StoryPuzzleScreen: React.FC<StoryPuzzleScreenProps> = () => {
       }
 
       if (settings.enableFillInBlanks) {
-        // ALWAYS start the quiz directly without any overlays or waiting countdowns
-        startQuizDirectly();
+        // Do not directly jump: put a 30s countdown to let students read the sentences
+        setCountdownRemaining(30);
       }
     }
-  }, [allCorrect, isCompleted, settings.enableConfetti, settings.enableFillInBlanks, startQuizDirectly]);
+  }, [allCorrect, isCompleted, settings.enableConfetti, settings.enableFillInBlanks]);
 
   // Check if student solved all fill-in-the-blanks
   useEffect(() => {
@@ -217,6 +262,7 @@ export const StoryPuzzleScreen: React.FC<StoryPuzzleScreenProps> = () => {
 
   const handleNextScreen = () => {
     if (activeBoxScreenIndex < totalScreens - 1) {
+      setCountdownRemaining(null);
       setActiveBoxScreenIndex(activeBoxScreenIndex + 1);
       sound.playPop();
     }
@@ -224,6 +270,7 @@ export const StoryPuzzleScreen: React.FC<StoryPuzzleScreenProps> = () => {
 
   const handlePreviousScreen = () => {
     if (activeBoxScreenIndex > 0) {
+      setCountdownRemaining(null);
       setActiveBoxScreenIndex(activeBoxScreenIndex - 1);
       sound.playPop();
     }
@@ -295,60 +342,73 @@ export const StoryPuzzleScreen: React.FC<StoryPuzzleScreenProps> = () => {
   return (
     <div className="flex-1 flex flex-col relative w-full max-w-6xl mx-auto px-4 gap-4">
       {/* 
-        Inline Minimal Control Row
-        Replaces the traditional heavy <header> to let the student easily navigate stages and restart,
-        satisfying the instruction to remove standard headers and footers while retaining full functionality.
+        Inline Minimal Control Row & Section Tabs
+        Lets the student easily switch between Pendahuluan, Isi 1, Isi 2, Isi 3, Isi 4, Penutup
       */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mt-4 px-1 shrink-0">
-        <div className="flex items-center gap-2">
-          <span className="bg-[#FEF3C7] text-[#78350F] border-2 border-[#F59E0B] text-xs font-black px-3 py-1 rounded-full uppercase tracking-wider shadow-xs">
-            Aktiviti {activeBoxScreenIndex + 1}/{totalScreens}: {activeBoxScreen.title}
-          </span>
-          {totalScreens > 1 && (
-            <div className="flex items-center gap-1">
-              <button
-                disabled={activeBoxScreenIndex === 0}
-                onClick={handlePreviousScreen}
-                className="p-1 rounded-lg border border-[#78350F] bg-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#FEF3C7] cursor-pointer"
-                title="Aktiviti Sebelumnya"
-              >
-                <ArrowLeft className="w-4 h-4" />
-              </button>
-              <button
-                disabled={isLastScreen}
-                onClick={handleNextScreen}
-                className="p-1 rounded-lg border border-[#78350F] bg-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#FEF3C7] cursor-pointer"
-                title="Aktiviti Seterusnya"
-              >
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-          )}
+      <div className="flex flex-col gap-2 mt-3 px-1 shrink-0">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="bg-[#FEF3C7] text-[#78350F] border-2 border-[#F59E0B] text-xs font-black px-3 py-1 rounded-full uppercase tracking-wider shadow-xs">
+              Aktiviti {activeBoxScreenIndex + 1}/{totalScreens}: {activeBoxScreen.title}
+            </span>
+            {totalScreens > 1 && (
+              <div className="flex items-center gap-1">
+                <button
+                  disabled={activeBoxScreenIndex === 0}
+                  onClick={handlePreviousScreen}
+                  className="p-1 rounded-lg border border-[#78350F] bg-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#FEF3C7] cursor-pointer"
+                  title="Aktiviti Sebelumnya"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                </button>
+                <button
+                  disabled={isLastScreen}
+                  onClick={handleNextScreen}
+                  className="p-1 rounded-lg border border-[#78350F] bg-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#FEF3C7] cursor-pointer"
+                  title="Aktiviti Seterusnya"
+                >
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                sound.playPop();
+                initializePieces();
+              }}
+              className="px-3 py-1 bg-white hover:bg-[#FEF3C7] rounded-lg border-2 border-[#78350F] text-[#78350F] font-bold text-xs transition-all flex items-center gap-1 cursor-pointer shadow-xs"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Mula Semula</span>
+            </button>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => {
-              setAdminTab('boxes');
-              setIsAdminOpen(true);
-              sound.playPop();
-            }}
-            className="px-3 py-1 bg-[#FEF3C7] hover:bg-[#FDE68A] rounded-lg border-2 border-[#78350F] text-[#78350F] font-black text-xs transition-all flex items-center gap-1 cursor-pointer shadow-xs"
-          >
-            <Sliders className="w-3.5 h-3.5 text-[#B45309]" />
-            <span>Ubah Kotak [G]</span>
-          </button>
-
-          <button
-            onClick={() => {
-              sound.playPop();
-              initializePieces();
-            }}
-            className="px-3 py-1 bg-white hover:bg-[#FEF3C7] rounded-lg border-2 border-[#78350F] text-[#78350F] font-bold text-xs transition-all flex items-center gap-1 cursor-pointer shadow-xs"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Mula Semula</span>
-          </button>
+        {/* Section Navigation Tabs (Pendahuluan -> Isi 1-4 -> Penutup) */}
+        <div className="flex items-center gap-1.5 overflow-x-auto py-1 scrollbar-none">
+          {settings.boxScreens.map((screen, sIdx) => {
+            const isActive = sIdx === activeBoxScreenIndex;
+            return (
+              <button
+                key={screen.id || `screen-tab-${sIdx}`}
+                onClick={() => {
+                  sound.playPop();
+                  setCountdownRemaining(null);
+                  setActiveBoxScreenIndex(sIdx);
+                }}
+                className={`px-3 py-1 rounded-xl text-xs font-black transition-all cursor-pointer whitespace-nowrap border-2 ${
+                  isActive
+                    ? 'bg-[#78350F] text-amber-100 border-[#78350F] shadow-sm scale-102 ring-2 ring-[#F59E0B]'
+                    : 'bg-white/80 hover:bg-[#FEF3C7] text-[#78350F] border-[#F59E0B]/50'
+                }`}
+              >
+                {screen.title} ({screen.boxCount} Kotak)
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -408,11 +468,10 @@ export const StoryPuzzleScreen: React.FC<StoryPuzzleScreenProps> = () => {
                   >
                     {placedPiece ? (
                       <div className="relative w-full h-full rounded-xl overflow-hidden group bg-white flex items-center justify-center">
-                        <img
-                          src={formatImgurUrl(placedPiece.imageUrl)}
+                        <SafeImgurImage
+                          src={placedPiece.imageUrl}
                           alt={placedPiece.altText}
                           className="w-full h-full object-contain"
-                          referrerPolicy="no-referrer"
                         />
                         <div className="absolute top-1.5 right-1.5 bg-[#10B981] text-white p-1 rounded-lg border border-white shadow-xs z-10">
                           <CheckCircle2 className="w-3.5 h-3.5" />
@@ -489,11 +548,10 @@ export const StoryPuzzleScreen: React.FC<StoryPuzzleScreenProps> = () => {
                     }`}
                   >
                     <div className="w-full h-full rounded-xl border-2 border-[#78350F] overflow-hidden relative shadow-inner bg-white flex items-center justify-center">
-                      <img
-                        src={formatImgurUrl(piece.imageUrl)}
+                      <SafeImgurImage
+                        src={piece.imageUrl}
                         alt={piece.altText}
                         className="w-full h-full object-contain pointer-events-none"
-                        referrerPolicy="no-referrer"
                       />
 
                       {isSelected && (
@@ -560,6 +618,47 @@ export const StoryPuzzleScreen: React.FC<StoryPuzzleScreenProps> = () => {
                 )}
               </div>
 
+              {/* 30-Second Countdown Notice Banner before Fill in the Blanks */}
+              {countdownRemaining !== null && countdownRemaining > 0 && (
+                <motion.div
+                  initial={{ scale: 0.96, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="mb-3 bg-gradient-to-r from-amber-500/30 to-amber-600/30 border-2 border-[#F59E0B] rounded-2xl p-3 sm:p-4 flex flex-wrap items-center justify-between gap-3 shadow-lg"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-[#F59E0B] border-2 border-[#78350F] flex items-center justify-center text-xl sm:text-2xl shadow-sm shrink-0">
+                      <Timer className="w-6 h-6 text-[#78350F] animate-pulse" />
+                    </div>
+                    <div>
+                      <p className="text-xs sm:text-sm font-black text-[#FDE68A] uppercase tracking-wider">
+                        Sila Baca & Fahami Ayat di Bawah!
+                      </p>
+                      <p className="text-[11px] sm:text-xs text-amber-100 font-semibold">
+                        Cabaran Isi Tempat Kosong akan bermula dalam masa:
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 ml-auto sm:ml-0">
+                    <div className="flex items-center gap-1.5 bg-[#451A03] px-3.5 py-1.5 rounded-xl border-2 border-[#F59E0B] shadow-inner">
+                      <span className="text-2xl sm:text-3xl font-black text-[#FDE68A] font-mono tabular-nums">
+                        {countdownRemaining}
+                      </span>
+                      <span className="text-xs font-black text-amber-200 uppercase">saat</span>
+                    </div>
+
+                    <button
+                      onClick={handleSkipCountdown}
+                      className="px-3.5 py-2 bg-[#10B981] hover:bg-[#059669] active:scale-95 text-white text-xs font-black rounded-xl border border-white shadow transition cursor-pointer flex items-center gap-1.5"
+                      title="Langkau masa dan mula kuiz segera"
+                    >
+                      <span>Mula Sekarang</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+
               {/* Continuous Flowing Story Paragraph / Fill in Blanks Mode */}
               <div className="relative z-10 bg-[#451A03]/60 p-4 sm:p-5 rounded-2xl border-2 border-[#F59E0B]/30 shadow-inner">
                 {fillInBlanksMode ? (
@@ -608,13 +707,26 @@ export const StoryPuzzleScreen: React.FC<StoryPuzzleScreenProps> = () => {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {!isLastScreen && (
+                    {!isLastScreen ? (
                       <button
                         onClick={handleNextScreen}
                         className="bg-[#10B981] hover:bg-[#059669] text-white px-5 py-2.5 rounded-xl text-xs sm:text-sm font-black border-2 border-white shadow-md flex items-center gap-2 transition cursor-pointer"
                       >
-                        <span>Aktiviti Seterusnya (Aktiviti {activeBoxScreenIndex + 2})</span>
+                        <span>
+                          Seterusnya: {settings.boxScreens[activeBoxScreenIndex + 1]?.title || `Aktiviti ${activeBoxScreenIndex + 2}`}
+                        </span>
                         <ArrowRight className="w-4 h-4" />
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          sound.playCelebration();
+                          setActiveBoxScreenIndex(0);
+                        }}
+                        className="bg-[#F59E0B] hover:bg-[#D97706] text-white px-5 py-2.5 rounded-xl text-xs sm:text-sm font-black border-2 border-white shadow-md flex items-center gap-2 transition cursor-pointer"
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                        <span>Mula Dari Pendahuluan</span>
                       </button>
                     )}
                   </div>
