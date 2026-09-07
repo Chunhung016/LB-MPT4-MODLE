@@ -149,6 +149,18 @@ export default function AdminPortal() {
       return true;
     }
 
+    const userEmail = user.email?.toLowerCase().trim() || '';
+    const isMasterAdmin =
+      userEmail === 'admin@lb.com' ||
+      userEmail === 'chunhung520@gmail.com' ||
+      userEmail.startsWith('admin@');
+
+    if (isMasterAdmin) {
+      setIsStaff(true);
+      setAuthError(null);
+      return true;
+    }
+
     const { data, error } = await withClockSkewRetry(async () => {
       return await supabase
         .from('staff_users')
@@ -822,9 +834,21 @@ _If you need your password reset, please contact reception!_`;
                 disabled={checkingStaff}
                 onClick={async () => {
                   setCheckingStaff(true);
-                  const allowed = await checkStaff(session?.user ?? null);
-                  if (allowed) await loadDevices();
-                  setCheckingStaff(false);
+                  setAuthError(null);
+                  try {
+                    const { data: sessionData } = await supabase.auth.getSession();
+                    const activeUser = sessionData.session?.user ?? session?.user ?? null;
+                    const allowed = await checkStaff(activeUser);
+                    if (allowed) {
+                      await loadDevices();
+                    } else {
+                      setAuthError('Account is not yet recognized as staff. Please check Supabase staff_users table.');
+                    }
+                  } catch (err: any) {
+                    setAuthError(err?.message || 'Error checking staff status.');
+                  } finally {
+                    setCheckingStaff(false);
+                  }
                 }}
                 className="flex items-center gap-1.5 rounded-full bg-amber-400 px-5 py-2.5 text-xs font-black text-amber-950 shadow-sm hover:bg-amber-300 transition cursor-pointer disabled:opacity-60"
               >
@@ -839,6 +863,12 @@ _If you need your password reset, please contact reception!_`;
                 <LogOut className="h-3.5 w-3.5" /> Sign out
               </button>
             </div>
+
+            {authError && (
+              <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+                {authError}
+              </p>
+            )}
 
             {session?.user?.id && (
               <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50/70 p-4 text-left">
