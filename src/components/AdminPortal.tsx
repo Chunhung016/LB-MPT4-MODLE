@@ -35,7 +35,13 @@ import BulkImportModal from './BulkImportModal';
 import PrintableRosterModal, { RosterItem } from './PrintableRosterModal';
 import AdminMaintenanceTab from './AdminMaintenanceTab';
 import { useMaintenance } from '../context/MaintenanceContext';
-import { isSupabaseConfigured, supabase, getFunctionErrorMessage } from '../lib/supabase';
+import {
+  isSupabaseConfigured,
+  supabase,
+  getFunctionErrorMessage,
+  isClockSkewError,
+  withClockSkewRetry,
+} from '../lib/supabase';
 import { exportToCSV, exportToJSON } from '../utils/csvHelper';
 
 interface EntitlementRow {
@@ -112,6 +118,8 @@ export default function AdminPortal() {
   const [dataError, setDataError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [checkingStaff, setCheckingStaff] = useState(false);
+  const [copiedSql, setCopiedSql] = useState(false);
   
   // Modals
   const [showAddParent, setShowAddParent] = useState(false);
@@ -129,7 +137,7 @@ export default function AdminPortal() {
   const [scannerOpen, setScannerOpen] = useState(false);
   const [reloadAmounts, setReloadAmounts] = useState<Record<string, string>>({});
 
-  const checkStaff = useCallback(async (user: User | null) => {
+  const checkStaff = useCallback(async (user: User | null): Promise<boolean> => {
     if (!user) {
       setIsStaff(false);
       return false;
@@ -141,20 +149,29 @@ export default function AdminPortal() {
       return true;
     }
 
-    const { data, error } = await supabase
-      .from('staff_users')
-      .select('user_id')
-      .eq('user_id', user.id)
-      .maybeSingle();
+    const { data, error } = await withClockSkewRetry(async () => {
+      return await supabase
+        .from('staff_users')
+        .select('user_id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+    }, 4, 1200);
 
     if (error) {
-      setAuthError(error.message);
+      if (isClockSkewError(error)) {
+        setAuthError('Clock synchronizing with server. Please try again in a few seconds.');
+      } else {
+        setAuthError(error.message);
+      }
       setIsStaff(false);
       return false;
     }
 
     const allowed = Boolean(data);
     setIsStaff(allowed);
+    if (allowed) {
+      setAuthError(null);
+    }
     return allowed;
   }, []);
 
@@ -220,30 +237,40 @@ export default function AdminPortal() {
       return;
     }
 
-    const [deviceResult, requestResult, profileResult, walletResult] = await Promise.all([
-      supabase
-        .from('devices')
-        .select(
-          'id, activation_code, parent_name, child_name, notes, created_at, last_seen_at, owner_user_id, entitlements(id, product_slug, active, expires_at)'
-        )
-        .order('last_seen_at', { ascending: false }),
-      supabase
-        .from('activation_requests')
-        .select(
-          'id, request_code, user_id, device_id, wants_spelling_bee, wants_ai, status, requested_at'
-        )
-        .eq('status', 'pending')
-        .order('requested_at', { ascending: true }),
-      supabase
-        .from('parent_profiles')
-        .select('user_id, username, parent_name, child_name, contact_phone'),
-      supabase.from('bee_token_wallets').select('user_id, balance'),
-    ]);
+    const [deviceResult, requestResult, profileResult, walletResult] = await withClockSkewRetry(
+      async () => {
+        return await Promise.all([
+          supabase
+            .from('devices')
+            .select(
+              'id, activation_code, parent_name, child_name, notes, created_at, last_seen_at, owner_user_id, entitlements(id, product_slug, active, expires_at)'
+            )
+            .order('last_seen_at', { ascending: false }),
+          supabase
+            .from('activation_requests')
+            .select(
+              'id, request_code, user_id, device_id, wants_spelling_bee, wants_ai, status, requested_at'
+            )
+            .eq('status', 'pending')
+            .order('requested_at', { ascending: true }),
+          supabase
+            .from('parent_profiles')
+            .select('user_id, username, parent_name, child_name, contact_phone'),
+          supabase.from('bee_token_wallets').select('user_id, balance'),
+        ]);
+      },
+      4,
+      1200
+    );
 
     const firstError =
       deviceResult.error ?? requestResult.error ?? profileResult.error ?? walletResult.error;
     if (firstError) {
-      setDataError(firstError.message);
+      if (isClockSkewError(firstError)) {
+        setDataError('Database clock synchronizing. Please tap refresh in a moment.');
+      } else {
+        setDataError(firstError.message);
+      }
       return;
     }
 
@@ -273,26 +300,42 @@ export default function AdminPortal() {
       return;
     }
 
+    let isMounted = true;
+
     void supabase.auth.getSession().then(async ({ data, error }) => {
+      if (!isMounted) return;
       if (error) {
-        setAuthError(`Unable to connect to Supabase Auth: ${error.message}`);
+        if (!isClockSkewError(error)) {
+          setAuthError(`Unable to connect to Supabase Auth: ${error.message}`);
+        }
         setAuthReady(true);
         return;
       }
       setSession(data.session);
-      const allowed = await checkStaff(data.session?.user ?? null);
-      if (allowed) await loadDevices();
-      setAuthReady(true);
+      if (data.session?.user) {
+        const allowed = await checkStaff(data.session.user);
+        if (allowed && isMounted) await loadDevices();
+      }
+      if (isMounted) setAuthReady(true);
     });
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!isMounted) return;
       setSession(nextSession);
-      void checkStaff(nextSession?.user ?? null).then((allowed) => {
-        if (allowed) void loadDevices();
-      });
+      if (nextSession?.user) {
+        window.setTimeout(() => {
+          if (!isMounted) return;
+          void checkStaff(nextSession.user).then((allowed) => {
+            if (allowed && isMounted) void loadDevices();
+          });
+        }, 600);
+      }
     });
 
-    return () => listener.subscription.unsubscribe();
+    return () => {
+      isMounted = false;
+      listener.subscription.unsubscribe();
+    };
   }, [checkStaff, loadDevices]);
 
   // Combined Roster for Parent Directory & Export
@@ -359,15 +402,44 @@ export default function AdminPortal() {
     event.preventDefault();
     setBusy(true);
     setAuthError(null);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      setAuthError(
-        error.message.toLowerCase().includes('fetch')
-          ? 'Unable to reach Supabase Auth. Please refresh and check internet connection.'
-          : error.message
-      );
+
+    try {
+      const cleanEmail = email.trim();
+      let res = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
+
+      if (res.error && isClockSkewError(res.error)) {
+        await new Promise((r) => setTimeout(r, 1200));
+        res = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
+      }
+
+      if (res.error) {
+        setAuthError(
+          res.error.message.toLowerCase().includes('fetch')
+            ? 'Unable to reach Supabase Auth. Please refresh and check internet connection.'
+            : isClockSkewError(res.error)
+              ? 'Server clock is synchronizing. Please try clicking Sign in again in 3 seconds.'
+              : res.error.message
+        );
+        setBusy(false);
+        return;
+      }
+
+      // Small grace period to allow database clock to catch up with GoTrue token
+      await new Promise((r) => setTimeout(r, 600));
+
+      const nextSession = res.data?.session;
+      if (nextSession) {
+        setSession(nextSession);
+        const allowed = await checkStaff(nextSession.user);
+        if (allowed) {
+          await loadDevices();
+        }
+      }
+    } catch (err: any) {
+      setAuthError(err?.message || 'Authentication error');
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   };
 
   const createParentAccount = async (event: FormEvent) => {
@@ -739,10 +811,58 @@ _If you need your password reset, please contact reception!_`;
         ) : !isStaff ? (
           <div className="mx-auto max-w-xl rounded-3xl border-2 border-rose-200 bg-white/95 p-8 text-center shadow-xl">
             <UserRound className="mx-auto h-11 w-11 text-rose-500" />
-            <h2 className="mt-3 text-xl font-black">This account is not approved for staff access</h2>
+            <h2 className="mt-3 text-xl font-black text-slate-800">Account Not in Staff Directory</h2>
             <p className="mt-2 text-sm text-slate-600">
-              Ask the system administrator to add this account to the staff list.
+              Signed in as <strong className="text-slate-800">{session?.user?.email}</strong>. This account is authenticated with Supabase, but is not yet approved in the <code className="bg-slate-100 px-1.5 py-0.5 rounded text-xs">staff_users</code> table.
             </p>
+
+            <div className="mt-5 flex items-center justify-center gap-3">
+              <button
+                type="button"
+                disabled={checkingStaff}
+                onClick={async () => {
+                  setCheckingStaff(true);
+                  const allowed = await checkStaff(session?.user ?? null);
+                  if (allowed) await loadDevices();
+                  setCheckingStaff(false);
+                }}
+                className="flex items-center gap-1.5 rounded-full bg-amber-400 px-5 py-2.5 text-xs font-black text-amber-950 shadow-sm hover:bg-amber-300 transition cursor-pointer disabled:opacity-60"
+              >
+                {checkingStaff ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                Re-check Access
+              </button>
+              <button
+                type="button"
+                onClick={() => void supabase.auth.signOut()}
+                className="flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 transition cursor-pointer"
+              >
+                <LogOut className="h-3.5 w-3.5" /> Sign out
+              </button>
+            </div>
+
+            {session?.user?.id && (
+              <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50/70 p-4 text-left">
+                <div className="flex items-center justify-between text-xs font-bold text-amber-900">
+                  <span>To approve this account in Supabase SQL Editor:</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const sql = `insert into public.staff_users (user_id, display_name, role)\nvalues ('${session.user.id}', '${session.user.email?.split('@')[0] || 'Admin'}', 'admin')\non conflict (user_id) do update set role = 'admin', active = true;`;
+                      navigator.clipboard.writeText(sql);
+                      setCopiedSql(true);
+                      setTimeout(() => setCopiedSql(false), 2000);
+                    }}
+                    className="flex items-center gap-1 text-[11px] font-black text-amber-800 hover:text-amber-950 cursor-pointer"
+                  >
+                    {copiedSql ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
+                    {copiedSql ? 'Copied!' : 'Copy SQL'}
+                  </button>
+                </div>
+                <pre className="mt-2 overflow-x-auto rounded-xl bg-slate-900 p-3 text-[11px] font-mono text-amber-200">
+                  {`insert into public.staff_users (user_id, display_name, role)\nvalues ('${session.user.id}', '${session.user.email?.split('@')[0] || 'Admin'}', 'admin')\non conflict (user_id) do update set role = 'admin', active = true;`}
+                </pre>
+              </div>
+            )}
           </div>
         ) : (
           <>

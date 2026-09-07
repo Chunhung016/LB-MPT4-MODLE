@@ -64,3 +64,46 @@ export async function getFunctionErrorMessage(error: any, data?: any): Promise<s
   return 'Unable to complete the account action. Please try again.';
 }
 
+export function isClockSkewError(err: any): boolean {
+  if (!err) return false;
+  const msg = (
+    typeof err === 'string'
+      ? err
+      : err?.message || err?.error_description || err?.msg || ''
+  ).toLowerCase();
+  const code = (err?.code || '').toString();
+  return (
+    code === 'PGRST303' ||
+    msg.includes('jwt issued at future') ||
+    msg.includes('issued at future') ||
+    msg.includes('issued in the future') ||
+    msg.includes('token is not yet valid')
+  );
+}
+
+export async function withClockSkewRetry<T>(
+  operation: () => Promise<T>,
+  maxRetries = 4,
+  delayMs = 1000
+): Promise<T> {
+  let attempt = 0;
+  while (true) {
+    try {
+      const result: any = await operation();
+      if (result && result.error && isClockSkewError(result.error) && attempt < maxRetries) {
+        attempt++;
+        await new Promise((resolve) => setTimeout(resolve, delayMs * attempt));
+        continue;
+      }
+      return result;
+    } catch (err: any) {
+      if (isClockSkewError(err) && attempt < maxRetries) {
+        attempt++;
+        await new Promise((resolve) => setTimeout(resolve, delayMs * attempt));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+

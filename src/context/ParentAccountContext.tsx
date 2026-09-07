@@ -8,7 +8,7 @@ import {
   useState,
 } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { isSupabaseConfigured, supabase } from '../lib/supabase';
+import { isSupabaseConfigured, supabase, isClockSkewError, withClockSkewRetry } from '../lib/supabase';
 
 const DEVICE_TOKEN_KEY = 'little_bee_device_token_v1';
 const PARENT_EMAIL_DOMAIN = 'parents.littlebee.app';
@@ -120,6 +120,7 @@ function getOrCreateDeviceToken() {
 
 function friendlyAuthError(message: string) {
   const normalized = message.toLowerCase();
+  if (isClockSkewError(message)) return 'Clock synchronizing with server. Please try again in a moment.';
   if (normalized.includes('invalid login credentials')) return 'Incorrect username or password.';
   if (normalized.includes('signup is disabled') || normalized.includes('signups not allowed')) return 'New account registration is temporarily unavailable. Please ask reception for help.';
   if (normalized.includes('user already registered')) return 'That username is already registered. Please sign in instead.';
@@ -191,11 +192,13 @@ export function ParentAccountProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const profileResult = await supabase
-      .from('parent_profiles')
-      .select('user_id, username, parent_name, child_name, contact_phone')
-      .eq('user_id', activeSession.user.id)
-      .maybeSingle();
+    const profileResult = await withClockSkewRetry(async () => {
+      return await supabase
+        .from('parent_profiles')
+        .select('user_id, username, parent_name, child_name, contact_phone')
+        .eq('user_id', activeSession.user.id)
+        .maybeSingle();
+    }, 4, 1000);
 
     if (profileResult.error) {
       setError(friendlyAuthError(profileResult.error.message));
