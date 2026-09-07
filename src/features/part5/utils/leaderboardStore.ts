@@ -1,4 +1,9 @@
 import { supabase, isSupabaseConfigured } from '../../../lib/supabase';
+import {
+  saveLeaderboardScore,
+  getLeaderboardScores,
+  clearLeaderboardScores,
+} from '../../../services/firebaseDb';
 
 export interface LeaderboardEntry {
   id: string;
@@ -51,6 +56,13 @@ export async function clearAllLeaderboard(): Promise<void> {
     // ignore
   }
 
+  // Clear in Firebase Firestore
+  try {
+    await clearLeaderboardScores();
+  } catch {
+    // ignore
+  }
+
   if (isSupabaseConfigured) {
     try {
       await supabase.from('spelling_bee_leaderboard').delete().neq('id', '00000000-0000-0000-0000-000000000000');
@@ -91,7 +103,7 @@ export function calculateGameScore(
 }
 
 /**
- * Record a game score to Supabase and Local Storage
+ * Record a game score to Firebase, Supabase, and Local Storage
  */
 export async function submitGameScore(entry: Omit<LeaderboardEntry, 'id' | 'created_at'>): Promise<LeaderboardEntry> {
   const newEntry: LeaderboardEntry = {
@@ -105,7 +117,24 @@ export async function submitGameScore(entry: Omit<LeaderboardEntry, 'id' | 'crea
   const updatedLocal = [newEntry, ...localList].sort((a, b) => b.score - a.score);
   saveLocalLeaderboard(updatedLocal);
 
-  // 2. Sync to Supabase if available
+  // 2. Save directly to Firebase Firestore
+  try {
+    await saveLeaderboardScore({
+      id: newEntry.id,
+      child_name: newEntry.child_name,
+      theme_name: newEntry.theme_name,
+      score: newEntry.score,
+      mastered_count: newEntry.mastered_count,
+      total_questions: newEntry.total_questions,
+      max_streak: newEntry.max_streak,
+      time_seconds: newEntry.time_seconds,
+      created_at: newEntry.created_at,
+    });
+  } catch (fbErr) {
+    console.warn('Firebase save score error:', fbErr);
+  }
+
+  // 3. Sync to Supabase if available
   if (isSupabaseConfigured) {
     try {
       const { data: userData } = await supabase.auth.getUser();
@@ -120,7 +149,7 @@ export async function submitGameScore(entry: Omit<LeaderboardEntry, 'id' | 'crea
         time_seconds: entry.time_seconds,
       });
     } catch {
-      // Gracefully continue with local storage
+      // Gracefully continue
     }
   }
 
@@ -128,9 +157,20 @@ export async function submitGameScore(entry: Omit<LeaderboardEntry, 'id' | 'crea
 }
 
 /**
- * Fetch leaderboard records from Supabase (with fallback to local storage)
+ * Fetch leaderboard records from Firebase (with Supabase and local storage fallback)
  */
 export async function fetchLeaderboard(filter: 'all' | 'today' = 'all'): Promise<LeaderboardEntry[]> {
+  // 1. First fetch from Firebase Firestore
+  try {
+    const fbScores = await getLeaderboardScores(filter);
+    if (fbScores && fbScores.length > 0) {
+      return fbScores as LeaderboardEntry[];
+    }
+  } catch (fbErr) {
+    console.warn('Firebase leaderboard fetch error:', fbErr);
+  }
+
+  // 2. Fallback to Supabase
   if (isSupabaseConfigured) {
     try {
       let query = supabase
@@ -147,6 +187,20 @@ export async function fetchLeaderboard(filter: 'all' | 'today' = 'all'): Promise
 
       const { data, error } = await query;
       if (!error && data && data.length > 0) {
+        // Also save them to Firebase in background so next query uses Firebase directly
+        data.forEach((e) => {
+          void saveLeaderboardScore({
+            id: e.id,
+            child_name: e.child_name,
+            theme_name: e.theme_name,
+            score: e.score,
+            mastered_count: e.mastered_count,
+            total_questions: e.total_questions,
+            max_streak: e.max_streak,
+            time_seconds: e.time_seconds,
+            created_at: e.created_at,
+          });
+        });
         return data as LeaderboardEntry[];
       }
     } catch {
@@ -154,7 +208,7 @@ export async function fetchLeaderboard(filter: 'all' | 'today' = 'all'): Promise
     }
   }
 
-  // Fallback to local storage
+  // 3. Fallback to local storage
   const local = getLocalLeaderboard();
   if (filter === 'today') {
     const startOfDay = new Date();

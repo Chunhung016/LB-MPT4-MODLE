@@ -1,0 +1,126 @@
+{
+  "entities": {
+    "ParentProfile": {
+      "title": "Parent Profile",
+      "description": "Student parent account credentials and learning access status",
+      "type": "object",
+      "properties": {
+        "username": { "type": "string", "description": "Unique username" },
+        "password": { "type": "string", "description": "Account password" },
+        "parent_name": { "type": "string", "description": "Parent full name" },
+        "child_name": { "type": "string", "description": "Child full name" },
+        "contact_phone": { "type": "string", "description": "Contact phone number" },
+        "activation_code": { "type": "string", "description": "Unique device activation code" },
+        "spelling_bee_enabled": { "type": "boolean", "description": "Spelling bee access flag" },
+        "ai_features_enabled": { "type": "boolean", "description": "AI features access flag" },
+        "bee_tokens": { "type": "number", "description": "Current bee token balance" },
+        "created_at": { "type": "string", "description": "ISO timestamp of account creation" },
+        "updated_at": { "type": "string", "description": "ISO timestamp of last update" }
+      },
+      "required": ["username", "parent_name", "child_name"]
+    },
+    "Device": {
+      "title": "Student Device",
+      "description": "Hardware device tied to a student profile",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique device ID" },
+        "device_token": { "type": "string", "description": "Device token" },
+        "activation_code": { "type": "string", "description": "Activation code" },
+        "parent_name": { "type": "string", "description": "Parent name" },
+        "child_name": { "type": "string", "description": "Child name" },
+        "notes": { "type": "string", "description": "Admin notes" },
+        "owner_username": { "type": "string", "description": "Parent username" },
+        "spelling_bee_enabled": { "type": "boolean", "description": "Spelling bee enabled" },
+        "ai_features_enabled": { "type": "boolean", "description": "AI enabled" },
+        "created_at": { "type": "string", "description": "Creation ISO date" },
+        "last_seen_at": { "type": "string", "description": "Last seen ISO date" }
+      },
+      "required": ["id", "activation_code"]
+    },
+    "ActivationRequest": {
+      "title": "Reception Activation Request",
+      "description": "Pending device activation QR requests",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Request ID" },
+        "request_code": { "type": "string", "description": "Short code" },
+        "username": { "type": "string", "description": "Parent username" },
+        "device_id": { "type": "string", "description": "Device ID" },
+        "wants_spelling_bee": { "type": "boolean", "description": "Wants spelling bee" },
+        "wants_ai": { "type": "boolean", "description": "Wants AI" },
+        "status": { "type": "string", "description": "pending or approved" },
+        "requested_at": { "type": "string", "description": "Requested ISO timestamp" }
+      },
+      "required": ["id", "request_code", "status"]
+    },
+    "AppSetting": {
+      "title": "App Setting",
+      "description": "System settings such as maintenance mode",
+      "type": "object",
+      "properties": {
+        "maintenance_enabled": { "type": "boolean", "description": "Maintenance switch" },
+        "maintenance_message": { "type": "string", "description": "Maintenance banner text" },
+        "maintenance_updated_at": { "type": "string", "description": "Maintenance timestamp" },
+        "broadcast_message": { "type": "string", "description": "Broadcast message" },
+        "updated_at": { "type": "string", "description": "Last updated timestamp" }
+      }
+    },
+    "StaffUser": {
+      "title": "Staff User",
+      "description": "Admin and staff accounts with elevated privileges",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "description": "Staff email" },
+        "display_name": { "type": "string", "description": "Staff display name" },
+        "role": { "type": "string", "description": "Staff role (admin/staff)" },
+        "active": { "type": "boolean", "description": "Active status" },
+        "created_at": { "type": "string", "description": "Created at ISO timestamp" }
+      },
+      "required": ["email", "role", "active"]
+    },
+    "SpellingBeeLeaderboard": {
+      "title": "Spelling Bee Leaderboard Entry",
+      "description": "Leaderboard scores and achievements for spelling games",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique score entry ID" },
+        "child_name": { "type": "string", "description": "Student display name" },
+        "theme_name": { "type": "string", "description": "Learning theme topic" },
+        "score": { "type": "number", "description": "Total calculated game score" },
+        "mastered_count": { "type": "number", "description": "Number of mastered words" },
+        "total_questions": { "type": "number", "description": "Total number of questions" },
+        "max_streak": { "type": "number", "description": "Highest streak achieved" },
+        "time_seconds": { "type": "number", "description": "Time elapsed in seconds" },
+        "created_at": { "type": "string", "description": "ISO creation date" }
+      },
+      "required": ["id", "child_name", "score"]
+    }
+  },
+  "firestore": {
+    "/parent_profiles/{username}": {
+      "schema": "ParentProfile",
+      "description": "Collection of parent and student accounts"
+    },
+    "/devices/{deviceId}": {
+      "schema": "Device",
+      "description": "Collection of registered student devices"
+    },
+    "/activation_requests/{requestId}": {
+      "schema": "ActivationRequest",
+      "description": "Collection of QR activation requests"
+    },
+    "/app_settings/{settingId}": {
+      "schema": "AppSetting",
+      "description": "Global application configuration and maintenance controls"
+    },
+    "/staff_users/{email}": {
+      "schema": "StaffUser",
+      "description": "Staff directory for administrator management"
+    },
+    "/spelling_bee_leaderboard/{id}": {
+      "schema": "SpellingBeeLeaderboard",
+      "description": "Collection of student spelling bee scores and leaderboard rankings"
+    }
+  }
+}

@@ -43,6 +43,20 @@ import {
   withClockSkewRetry,
 } from '../lib/supabase';
 import { exportToCSV, exportToJSON } from '../utils/csvHelper';
+import {
+  getAllDevices,
+  getAllParentProfiles,
+  getParentProfile,
+  getPendingActivationRequests,
+  saveParentProfile,
+  saveDevice,
+  updateActivationRequestStatus,
+  deleteParentProfile,
+  isStaffUser,
+  FirebaseParentProfile,
+  FirebaseDevice,
+} from '../services/firebaseDb';
+import { migrateAllDataToFirebase, MigrationSummary } from '../services/dataMigration';
 
 interface EntitlementRow {
   id: string;
@@ -136,6 +150,8 @@ export default function AdminPortal() {
   const [printRosterOpen, setPrintRosterOpen] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [reloadAmounts, setReloadAmounts] = useState<Record<string, string>>({});
+  const [migrationResult, setMigrationResult] = useState<MigrationSummary | null>(null);
+  const [migrating, setMigrating] = useState(false);
 
   const checkStaff = useCallback(async (user: User | null): Promise<boolean> => {
     if (!user) {
@@ -159,6 +175,18 @@ export default function AdminPortal() {
       setIsStaff(true);
       setAuthError(null);
       return true;
+    }
+
+    // Check Firebase staff users
+    try {
+      const fbStaff = await isStaffUser(userEmail);
+      if (fbStaff) {
+        setIsStaff(true);
+        setAuthError(null);
+        return true;
+      }
+    } catch {
+      // continue to supabase
     }
 
     const { data, error } = await withClockSkewRetry(async () => {
@@ -239,6 +267,82 @@ export default function AdminPortal() {
 
   const loadDevices = useCallback(async () => {
     setDataError(null);
+
+    // 1. Fetch from Firebase Firestore
+    try {
+      const [fbDevices, fbProfiles, fbRequests] = await Promise.all([
+        getAllDevices(),
+        getAllParentProfiles(),
+        getPendingActivationRequests(),
+      ]);
+
+      if (fbDevices.length > 0 || Object.keys(fbProfiles).length > 0 || fbRequests.length > 0) {
+        const mappedDevices: DeviceRow[] = fbDevices.map((d) => ({
+          id: d.id,
+          activation_code: d.activation_code,
+          parent_name: d.parent_name || null,
+          child_name: d.child_name || null,
+          notes: d.notes || null,
+          created_at: d.created_at,
+          last_seen_at: d.last_seen_at,
+          owner_user_id: d.owner_user_id || null,
+          entitlements: [
+            {
+              id: `${d.id}_spelling`,
+              product_slug: 'spelling_bee',
+              active: Boolean(d.spelling_bee_enabled),
+              expires_at: null,
+            },
+            {
+              id: `${d.id}_ai`,
+              product_slug: 'ai_features',
+              active: Boolean(d.ai_features_enabled),
+              expires_at: null,
+            },
+          ],
+        }));
+
+        const mappedProfiles: Record<string, ParentProfileRow> = {};
+        const mappedWallets: Record<string, number> = {};
+        Object.values(fbProfiles).forEach((p) => {
+          mappedProfiles[p.user_id] = {
+            user_id: p.user_id,
+            username: p.username,
+            parent_name: p.parent_name,
+            child_name: p.child_name,
+            contact_phone: p.contact_phone || null,
+          };
+          mappedWallets[p.user_id] = Number(p.bee_tokens ?? 100);
+        });
+
+        const mappedRequests: ActivationRequestRow[] = fbRequests.map((r) => ({
+          id: r.id,
+          request_code: r.request_code,
+          user_id: r.user_id,
+          device_id: r.device_id,
+          wants_spelling_bee: r.wants_spelling_bee,
+          wants_ai: r.wants_ai,
+          status: r.status,
+          requested_at: r.requested_at,
+        }));
+
+        const { localProfiles, localWallets, localDevices } = loadLocalData();
+        const finalDevices = [...mappedDevices];
+        localDevices.forEach((ld) => {
+          if (!finalDevices.some((fd) => fd.id === ld.id)) {
+            finalDevices.push(ld);
+          }
+        });
+
+        setDevices(finalDevices);
+        setActivationRequests(mappedRequests);
+        setProfiles({ ...localProfiles, ...mappedProfiles });
+        setWallets({ ...localWallets, ...mappedWallets });
+        return;
+      }
+    } catch (fbErr) {
+      console.warn('Firebase device fetch fallback:', fbErr);
+    }
 
     if (!isSupabaseConfigured) {
       const { localProfiles, localWallets, localDevices } = loadLocalData();
@@ -461,6 +565,40 @@ export default function AdminPortal() {
 
     const cleanUsername = newParent.username.trim().toLowerCase();
 
+    // 1. Save directly to Firebase Firestore
+    try {
+      const actCode = 'BEE-' + Math.floor(1000 + Math.random() * 9000);
+      const uid = 'usr_' + cleanUsername + '_' + Date.now().toString(36);
+      const newFbProfile: FirebaseParentProfile = {
+        user_id: uid,
+        username: cleanUsername,
+        password: newParent.password,
+        parent_name: newParent.parentName.trim(),
+        child_name: newParent.childName.trim(),
+        contact_phone: newParent.contactPhone.trim() || null,
+        activation_code: actCode,
+        spelling_bee_enabled: true,
+        ai_features_enabled: true,
+        bee_tokens: 100,
+        created_at: new Date().toISOString(),
+      };
+      await saveParentProfile(newFbProfile);
+      await saveDevice({
+        id: 'dev_' + cleanUsername + '_' + Math.random().toString(36).substring(2, 7),
+        activation_code: actCode,
+        parent_name: newFbProfile.parent_name,
+        child_name: newFbProfile.child_name,
+        owner_user_id: uid,
+        owner_username: cleanUsername,
+        spelling_bee_enabled: true,
+        ai_features_enabled: true,
+        created_at: new Date().toISOString(),
+        last_seen_at: new Date().toISOString(),
+      });
+    } catch (fbErr) {
+      console.warn('Firebase create error:', fbErr);
+    }
+
     if (!isSupabaseConfigured) {
       // Local account creation
       const raw = localStorage.getItem('little_bee_local_accounts_v1') || '{}';
@@ -574,6 +712,44 @@ _If you need your password reset, please contact reception!_`;
     setSavingId(device.id);
     setDataError(null);
 
+    const isSpelling = productSlug === 'spelling_bee';
+    const existingEntitlements = device.entitlements || [];
+    const spellingActive = isSpelling ? active : (existingEntitlements.find(e => e.product_slug === 'spelling_bee')?.active ?? false);
+    const aiActive = !isSpelling ? active : (existingEntitlements.find(e => e.product_slug === 'ai_features')?.active ?? false);
+
+    // 1. Save to Firebase Firestore
+    try {
+      await saveDevice({
+        id: device.id,
+        activation_code: device.activation_code,
+        parent_name: device.parent_name,
+        child_name: device.child_name,
+        notes: device.notes,
+        owner_user_id: device.owner_user_id,
+        owner_username: device.owner_user_id ? profiles[device.owner_user_id]?.username : undefined,
+        spelling_bee_enabled: spellingActive,
+        ai_features_enabled: aiActive,
+        created_at: device.created_at,
+        last_seen_at: new Date().toISOString(),
+      });
+
+      if (device.owner_user_id) {
+        const prof = profiles[device.owner_user_id];
+        if (prof?.username) {
+          const fbP = await getParentProfile(prof.username);
+          if (fbP) {
+            await saveParentProfile({
+              ...fbP,
+              spelling_bee_enabled: spellingActive,
+              ai_features_enabled: aiActive,
+            });
+          }
+        }
+      }
+    } catch (fbErr) {
+      console.warn('Firebase setProduct error:', fbErr);
+    }
+
     if (!isSupabaseConfigured) {
       const raw = localStorage.getItem('little_bee_local_accounts_v1');
       if (raw && device.owner_user_id) {
@@ -615,6 +791,22 @@ _If you need your password reset, please contact reception!_`;
     setSavingId(userId);
     setDataError(null);
 
+    // 1. Save to Firebase Firestore
+    try {
+      const prof = profiles[userId];
+      if (prof?.username) {
+        const fbP = await getParentProfile(prof.username);
+        if (fbP) {
+          await saveParentProfile({
+            ...fbP,
+            bee_tokens: (fbP.bee_tokens || 0) + amount,
+          });
+        }
+      }
+    } catch (fbErr) {
+      console.warn('Firebase reload tokens error:', fbErr);
+    }
+
     if (!isSupabaseConfigured) {
       const raw = localStorage.getItem('little_bee_local_accounts_v1');
       if (raw) {
@@ -653,6 +845,15 @@ _If you need your password reset, please contact reception!_`;
 
     setSavingId(parent.userId);
     setDataError(null);
+
+    // Delete from Firebase Firestore
+    try {
+      if (parent.username) {
+        await deleteParentProfile(parent.username);
+      }
+    } catch (fbErr) {
+      console.warn('Firebase delete account error:', fbErr);
+    }
 
     if (!isSupabaseConfigured || parent.userId.startsWith('local_')) {
       const raw = localStorage.getItem('little_bee_local_accounts_v1');
@@ -697,14 +898,46 @@ _If you need your password reset, please contact reception!_`;
 
     setSavingId(request.id);
     setDataError(null);
-    const { error } = await supabase.rpc('process_activation_request', {
-      p_request_code: request.request_code,
-      p_grant_spelling_bee: draft.spellingBee,
-      p_grant_ai: draft.ai,
-      p_bee_tokens: tokenAmount,
-    });
-    if (error) setDataError(error.message);
-    else await loadDevices();
+
+    // 1. Process in Firebase Firestore
+    try {
+      await updateActivationRequestStatus(request.id, 'approved');
+      const targetDev = devices.find(d => d.id === request.device_id || d.owner_user_id === request.user_id);
+      if (targetDev) {
+        await saveDevice({
+          ...targetDev,
+          spelling_bee_enabled: draft.spellingBee,
+          ai_features_enabled: draft.ai,
+          last_seen_at: new Date().toISOString(),
+        });
+      }
+      const targetProf = (Object.values(profiles) as ParentProfileRow[]).find(p => p.user_id === request.user_id);
+      if (targetProf) {
+        const fbP = await getParentProfile(targetProf.username);
+        if (fbP) {
+          await saveParentProfile({
+            ...fbP,
+            spelling_bee_enabled: draft.spellingBee,
+            ai_features_enabled: draft.ai,
+            bee_tokens: (fbP.bee_tokens || 0) + tokenAmount,
+          });
+        }
+      }
+    } catch (fbErr) {
+      console.warn('Firebase process activation error:', fbErr);
+    }
+
+    if (isSupabaseConfigured) {
+      const { error } = await supabase.rpc('process_activation_request', {
+        p_request_code: request.request_code,
+        p_grant_spelling_bee: draft.spellingBee,
+        p_grant_ai: draft.ai,
+        p_bee_tokens: tokenAmount,
+      });
+      if (error) setDataError(error.message);
+    }
+
+    await loadDevices();
     setSavingId(null);
   };
 
@@ -755,6 +988,28 @@ _If you need your password reset, please contact reception!_`;
             </button>
             <button
               type="button"
+              disabled={migrating}
+              onClick={async () => {
+                setMigrating(true);
+                setDataError(null);
+                try {
+                  const summary = await migrateAllDataToFirebase();
+                  setMigrationResult(summary);
+                  await loadDevices();
+                } catch (mErr: any) {
+                  setDataError(mErr?.message || 'Migration failed');
+                } finally {
+                  setMigrating(false);
+                }
+              }}
+              className="flex cursor-pointer items-center gap-1.5 rounded-full border-2 border-amber-400 bg-amber-400 px-4 py-2 text-xs font-black text-amber-950 shadow-xs hover:bg-amber-300 transition"
+              title="Migrate all parents, devices, and settings into Firebase Firestore"
+            >
+              <Sparkles className={`h-3.5 w-3.5 ${migrating ? 'animate-spin' : ''}`} />
+              {migrating ? 'Migrating...' : 'Migrate to Firebase'}
+            </button>
+            <button
+              type="button"
               onClick={() => void loadDevices()}
               className="flex cursor-pointer items-center gap-1.5 rounded-full border-2 border-amber-200 bg-white p-2 text-slate-700 hover:bg-amber-50 transition"
               title="Refresh all data"
@@ -772,6 +1027,48 @@ _If you need your password reset, please contact reception!_`;
             ) : null}
           </div>
         </header>
+
+        {migrationResult && (
+          <div className="mb-6 rounded-3xl border-2 border-emerald-300 bg-emerald-50/95 p-5 text-emerald-950 shadow-md backdrop-blur-xs">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-emerald-500 text-white shadow-xs">
+                  <Check className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-emerald-900 text-base">Supabase Data Successfully Merged into Firebase!</h3>
+                  <p className="text-xs text-emerald-800 mt-0.5">
+                    All student profiles, device entitlements, token balances, staff access, and spelling bee leaderboard scores are now unified in Firebase Firestore.
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
+                    <span className="rounded-lg bg-emerald-200/80 px-2.5 py-1 text-emerald-900 border border-emerald-300">
+                      🐝 {migrationResult.parentProfilesCount} Parent Profiles
+                    </span>
+                    <span className="rounded-lg bg-emerald-200/80 px-2.5 py-1 text-emerald-900 border border-emerald-300">
+                      📱 {migrationResult.devicesCount} Devices
+                    </span>
+                    <span className="rounded-lg bg-emerald-200/80 px-2.5 py-1 text-emerald-900 border border-emerald-300">
+                      🏆 {migrationResult.leaderboardCount} Leaderboard Scores
+                    </span>
+                    <span className="rounded-lg bg-emerald-200/80 px-2.5 py-1 text-emerald-900 border border-emerald-300">
+                      🛡️ {migrationResult.staffUsersCount} Staff Accounts
+                    </span>
+                    <span className="rounded-lg bg-emerald-200/80 px-2.5 py-1 text-emerald-900 border border-emerald-300">
+                      ⚙️ {migrationResult.maintenanceSynced ? 'Maintenance Settings Synchronized' : 'System Settings Verified'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMigrationResult(null)}
+                className="rounded-full p-1.5 text-emerald-700 hover:bg-emerald-100 transition shrink-0"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+        )}
 
         {!authReady ? (
           <div className="flex justify-center py-24">

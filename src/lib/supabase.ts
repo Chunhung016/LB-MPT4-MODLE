@@ -1,18 +1,30 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = (
-  import.meta.env.VITE_SUPABASE_URL ||
-  import.meta.env.NEXT_PUBLIC_SUPABASE_URL ||
-  'https://yneayotsllbfslziwijm.supabase.co'
-)?.trim() as string;
+function sanitizeConfig(value?: string, defaultValue = ''): string {
+  const trimmed = (value || '').trim();
+  if (
+    !trimmed ||
+    trimmed.includes('YOUR_PROJECT') ||
+    trimmed.includes('YOUR_PUBLISHABLE_KEY') ||
+    trimmed.includes('not-configured')
+  ) {
+    return defaultValue;
+  }
+  return trimmed;
+}
 
-const supabaseKey = (
+const supabaseUrl = sanitizeConfig(
+  import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL,
+  'https://yneayotsllbfslziwijm.supabase.co'
+);
+
+const supabaseKey = sanitizeConfig(
   import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-  import.meta.env.VITE_SUPABASE_ANON_KEY ||
-  import.meta.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-  import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    import.meta.env.VITE_SUPABASE_ANON_KEY ||
+    import.meta.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   'sb_publishable_d8LQQOSBMM-opWxRA5mTWg_XuwCVTKP'
-)?.trim() as string;
+);
 
 export const isSupabaseConfigured = Boolean(
   supabaseUrl &&

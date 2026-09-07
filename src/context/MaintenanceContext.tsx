@@ -9,6 +9,11 @@ import {
 } from 'react';
 import { PostMaintenanceChangelog, SystemMaintenanceConfig } from '../types';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
+import {
+  getSystemMaintenance,
+  saveSystemMaintenance,
+  subscribeSystemMaintenance,
+} from '../services/firebaseDb';
 
 const MAINTENANCE_STORAGE_KEY = 'acebee_system_maintenance_v2';
 const BROADCAST_CHANNEL_NAME = 'acebee_maintenance_broadcast_channel';
@@ -214,9 +219,20 @@ export function MaintenanceProvider({ children }: { children: ReactNode }) {
     return false;
   }, [applyNewConfig]);
 
-  // Sync from Supabase if configured
+  // Sync from Firebase (primary) and fallbacks
   const refreshMaintenanceStatus = useCallback(async () => {
-    // 1. Try direct Supabase JS client
+    // 1. Primary: Firebase Firestore
+    try {
+      const fbConfig = await getSystemMaintenance();
+      if (fbConfig) {
+        applyNewConfig(fbConfig);
+        return;
+      }
+    } catch {
+      // fallback
+    }
+
+    // 2. Supabase if configured
     if (isSupabaseConfigured) {
       try {
         const { data, error } = await supabase
@@ -235,7 +251,7 @@ export function MaintenanceProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    // 2. HTTP REST direct fetch fallback (vital for mobile Safari / Chrome)
+    // 3. HTTP REST direct fetch fallback (vital for mobile Safari / Chrome)
     await fetchDirectMaintenanceSetting();
   }, [applyNewConfig, fetchDirectMaintenanceSetting]);
 
@@ -279,7 +295,19 @@ export function MaintenanceProvider({ children }: { children: ReactNode }) {
     // Initial fetch
     void refreshMaintenanceStatus();
 
-    // Setup Supabase Realtime channel for instant cross-device updates (Laptop -> iPad -> Mobile)
+    // Firebase Firestore Realtime Subscription (Zero latency, across all devices)
+    let unsubscribeFb: (() => void) | null = null;
+    try {
+      unsubscribeFb = subscribeSystemMaintenance((fbConfig) => {
+        if (fbConfig) {
+          applyNewConfig(fbConfig);
+        }
+      });
+    } catch (err) {
+      console.warn('Firebase realtime subscription skipped:', err);
+    }
+
+    // Setup Supabase Realtime channel for secondary fallback
     let realtimeChannel: any = null;
     if (isSupabaseConfigured) {
       try {
@@ -317,6 +345,13 @@ export function MaintenanceProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('storage', handleStorage);
       window.removeEventListener('focus', handleVisibilityOrFocus);
       document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      if (unsubscribeFb) {
+        try {
+          unsubscribeFb();
+        } catch {
+          // ignore
+        }
+      }
       if (realtimeChannel) {
         try {
           supabase.removeChannel(realtimeChannel);
@@ -346,6 +381,14 @@ export function MaintenanceProvider({ children }: { children: ReactNode }) {
         // ignore
       }
 
+      // 1. Primary: Save to Firebase Firestore
+      try {
+        await saveSystemMaintenance(updated);
+      } catch (fbErr) {
+        console.warn('Firebase maintenance save failed:', fbErr);
+      }
+
+      // 2. Secondary: Sync to Supabase if configured
       if (isSupabaseConfigured) {
         try {
           const { error: upsertError } = await supabase
