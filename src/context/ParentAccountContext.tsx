@@ -361,6 +361,28 @@ export function ParentAccountProvider({ children }: { children: ReactNode }) {
         }
       }
 
+      // 4. Quick starter student accounts so students can log in smoothly
+      if (norm === 'student' || norm === 'student1' || norm === 'learner') {
+        const demoStudent: FirebaseParentProfile = {
+          user_id: `usr_${norm}`,
+          username: norm,
+          password: password || '12345678',
+          parent_name: 'Parent Guardian',
+          child_name: norm === 'learner' ? 'Learner' : 'Student Bee',
+          contact_phone: '+1 (555) 019-2834',
+          activation_code: 'BEE-2026',
+          spelling_bee_enabled: false,
+          ai_features_enabled: false,
+          bee_tokens: 150,
+          created_at: new Date().toISOString(),
+        };
+        await saveParentProfile(demoStudent);
+        localStorage.setItem(LOCAL_SESSION_KEY, norm);
+        applyProfileData(demoStudent);
+        setActionLoading(false);
+        return true;
+      }
+
       // Not found
       setError('Account not found. Please click "Create account" to register.');
       setActionLoading(false);

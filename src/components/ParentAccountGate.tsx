@@ -49,13 +49,16 @@ export default function ParentAccountGate({ children }: { children: ReactNode })
   const handleQuickDemo = async () => {
     setFormError(null);
     clearError();
-    await signUp({
-      username: 'demoparent',
-      password: 'demopassword123',
-      parentName: 'Sarah Jenkins',
-      childName: 'Leo Jenkins',
-      contactPhone: '555-0199',
-    });
+    const success = await signIn('demoparent', 'demopassword123');
+    if (!success) {
+      await signUp({
+        username: 'demoparent',
+        password: 'demopassword123',
+        parentName: 'Sarah Jenkins',
+        childName: 'Leo Jenkins',
+        contactPhone: '555-0199',
+      });
+    }
   };
 
   if (loading) {
