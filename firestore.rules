@@ -1,49 +1,107 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Catch-all
-    match /{document=**} {
-      allow read, write: if false;
+    function signedIn() { return request.auth != null; }
+    function staff() {
+      let record = get(/databases/$(database)/documents/staff_users/$(request.auth.token.email));
+      return signedIn() && record.data.user_id == request.auth.uid && record.data.active == true
+        && record.data.role in ['admin', 'staff'];
     }
-
-    // App Settings (Maintenance mode & Broadcast alerts)
-    match /app_settings/{settingId} {
-      allow read: if true;
-      allow write: if true;
+    function ownProfile(username) {
+      return signedIn() && request.auth.token.email == username + '@parents.littlebee.app';
     }
-
-    // Parent and Student Profiles
-    match /parent_profiles/{username} {
-      allow read: if true;
-      allow create, update: if true;
-      allow delete: if request.auth != null;
+    function currentParent() {
+      let record = get(/databases/$(database)/documents/parent_profiles/$(request.auth.token.email.split('@')[0]));
+      return signedIn() && record.data.user_id == request.auth.uid && record.data.get('disabled', false) == false
+        && request.auth.token.auth_time >= record.data.get('auth_valid_after', 0);
     }
-
-    // Registered Hardware & Devices
-    match /devices/{deviceId} {
-      allow read: if true;
-      allow create, update: if true;
-      allow delete: if request.auth != null;
+    function safeProfile(data) {
+      return !data.keys().hasAny(['password']) && data.username is string && data.user_id is string
+        && data.parent_name is string && data.parent_name.size() > 0 && data.parent_name.size() <= 120
+        && data.child_name is string && data.child_name.size() > 0 && data.child_name.size() <= 120
+        && (data.contact_phone == null || (data.contact_phone is string && data.contact_phone.size() <= 40))
+        && data.bee_tokens is int && data.bee_tokens >= 0 && data.bee_tokens <= 9007199254740991
+        && data.spelling_bee_enabled is bool && data.ai_features_enabled is bool;
     }
-
-    // Reception QR Activation Queue
-    match /activation_requests/{requestId} {
-      allow read: if true;
-      allow create, update: if true;
-      allow delete: if request.auth != null;
-    }
-
-    // Staff Directory
     match /staff_users/{email} {
-      allow read: if true;
-      allow write: if true;
+      allow get: if signedIn() && request.auth.token.email == email;
+      // Staff provisioning is an administrator operation through the Admin SDK/console only.
+      allow list, write: if false;
     }
-
-    // Spelling Bee Leaderboard
+    match /parent_profiles/{username} {
+      allow get: if staff() || (ownProfile(username) && currentParent() && !resource.data.keys().hasAny(['password']));
+      allow list: if staff();
+      allow create: if ownProfile(username) && username.matches('^[a-z0-9][a-z0-9._-]{2,31}$')
+        && request.resource.data.keys().hasOnly(['user_id', 'username', 'parent_name', 'child_name', 'contact_phone',
+          'activation_code', 'spelling_bee_enabled', 'ai_features_enabled', 'bee_tokens', 'created_at'])
+        && request.resource.data.user_id == request.auth.uid && request.resource.data.username == username
+        && request.resource.data.activation_code is string && request.resource.data.activation_code.size() <= 80
+        && request.resource.data.bee_tokens == 0 && request.resource.data.spelling_bee_enabled == false
+        && request.resource.data.ai_features_enabled == false && safeProfile(request.resource.data);
+      allow update: if safeProfile(request.resource.data) && (
+        (staff() && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'parent_name', 'child_name', 'contact_phone', 'spelling_bee_enabled', 'ai_features_enabled', 'bee_tokens', 'updated_at']))
+        || (ownProfile(username) && currentParent() && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['parent_name', 'child_name', 'contact_phone', 'updated_at'])));
+      allow delete: if false;
+    }
+    match /devices/{deviceId} {
+      // UID prefix permits a transaction to read its own not-yet-created device.
+      allow get: if staff() || (currentParent() && (deviceId.matches('^' + request.auth.uid + '_.*') || resource.data.owner_user_id == request.auth.uid));
+      allow list: if staff();
+      allow create: if currentParent() && request.resource.data.owner_user_id == request.auth.uid
+        && request.resource.data.owner_username + '@parents.littlebee.app' == request.auth.token.email
+        && request.resource.data.id == deviceId && deviceId.matches('^' + request.auth.uid + '_.*')
+        && request.resource.data.spelling_bee_enabled == false && request.resource.data.ai_features_enabled == false
+        && request.resource.data.keys().hasOnly(['id','activation_code','owner_user_id','owner_username','parent_name','child_name',
+          'spelling_bee_enabled','ai_features_enabled','created_at','last_seen_at']);
+      allow update: if (staff() && request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['spelling_bee_enabled','ai_features_enabled','parent_name','child_name','notes']))
+        || (currentParent() && resource.data.owner_user_id == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['last_seen_at']));
+      allow delete: if false;
+    }
+    match /activation_requests/{id} {
+      function ownRequest() {
+        return currentParent() && id == request.auth.uid && request.resource.data.id == id
+          && request.resource.data.user_id == request.auth.uid
+          && request.resource.data.username + '@parents.littlebee.app' == request.auth.token.email
+          && request.resource.data.status == 'pending'
+          && request.resource.data.wants_spelling_bee is bool && request.resource.data.wants_ai is bool
+          && (request.resource.data.wants_spelling_bee || request.resource.data.wants_ai)
+          && request.resource.data.request_code is string && request.resource.data.request_code.size() <= 80
+          && request.resource.data.keys().hasOnly(['id','request_code','user_id','username','device_id','wants_spelling_bee','wants_ai','status','requested_at'])
+          && get(/databases/$(database)/documents/devices/$(request.resource.data.device_id)).data.owner_user_id == request.auth.uid;
+      }
+      allow get: if staff() || (currentParent() && (id == request.auth.uid || resource.data.user_id == request.auth.uid));
+      allow list: if staff() || (currentParent() && resource.data.user_id == request.auth.uid);
+      allow create: if ownRequest();
+      allow update: if (staff() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+        && resource.data.status == 'pending' && request.resource.data.status in ['approved','rejected'])
+        || (ownRequest() && resource.data.status != 'pending');
+      allow delete: if false;
+    }
+    match /app_settings/{settingId} {
+      allow read: if settingId == 'system_maintenance';
+      allow write: if staff() && settingId == 'system_maintenance';
+    }
     match /spelling_bee_leaderboard/{id} {
-      allow read: if true;
-      allow create, update: if true;
-      allow delete: if request.auth != null;
+      allow read: if staff() || currentParent();
+      allow create: if currentParent() && request.resource.data.user_id == request.auth.uid
+        && request.resource.data.id == id && request.resource.data.keys().hasOnly([
+          'id','user_id','child_name','theme_name','score','mastered_count','total_questions','max_streak','time_seconds','created_at'])
+        && request.resource.data.score is int && request.resource.data.score >= 0 && request.resource.data.score <= 1000000
+        && request.resource.data.total_questions is int && request.resource.data.total_questions > 0 && request.resource.data.total_questions <= 1000
+        && request.resource.data.mastered_count is int && request.resource.data.mastered_count >= 0
+        && request.resource.data.mastered_count <= request.resource.data.total_questions
+        && request.resource.data.max_streak is int && request.resource.data.max_streak >= 0
+        && request.resource.data.max_streak <= request.resource.data.total_questions
+        && request.resource.data.time_seconds is number && request.resource.data.time_seconds >= 0
+        && request.resource.data.child_name is string && request.resource.data.child_name.size() <= 120
+        && request.resource.data.theme_name is string && request.resource.data.theme_name.size() <= 200
+        && request.resource.data.created_at is string && request.resource.data.created_at.size() <= 30;
+      allow update, delete: if false;
     }
+    match /{document=**} { allow read, write: if false; }
   }
 }

@@ -13,7 +13,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { parseCSV, generateSampleCSV, ParentImportRecord } from '../utils/csvHelper';
-import { supabase, isSupabaseConfigured, getFunctionErrorMessage } from '../lib/supabase';
+import { manageParentAccount } from '../lib/accountApi';
 
 interface BulkImportModalProps {
   isOpen: boolean;
@@ -55,7 +55,7 @@ export default function BulkImportModal({ isOpen, onClose, onSuccess }: BulkImpo
               parent_name: String(item.parent_name || item.parent || 'Parent'),
               child_name: String(item.child_name || item.child || 'Student'),
               contact_phone: item.contact_phone || item.phone || '',
-              bee_tokens: Number(item.bee_tokens || item.tokens || 100),
+              bee_tokens: Number(item.bee_tokens ?? item.tokens ?? 0),
               spelling_bee: item.spelling_bee ?? true,
               ai_features: item.ai_features ?? false,
             }))
@@ -91,7 +91,7 @@ export default function BulkImportModal({ isOpen, onClose, onSuccess }: BulkImpo
             parent_name: String(item.parent_name || item.parent || 'Parent'),
             child_name: String(item.child_name || item.child || 'Student'),
             contact_phone: item.contact_phone || item.phone || '',
-            bee_tokens: Number(item.bee_tokens || item.tokens || 100),
+            bee_tokens: Number(item.bee_tokens ?? item.tokens ?? 0),
             spelling_bee: item.spelling_bee ?? true,
             ai_features: item.ai_features ?? false,
           }))
@@ -131,82 +131,15 @@ export default function BulkImportModal({ isOpen, onClose, onSuccess }: BulkImpo
     let failCount = 0;
     const errors: string[] = [];
 
-    // Fallback if Supabase not configured: save locally
-    if (!isSupabaseConfigured) {
-      try {
-        const raw = localStorage.getItem('little_bee_local_accounts_v1') || '{}';
-        const accounts = JSON.parse(raw);
-
-        for (let i = 0; i < parsedRows.length; i++) {
-          const row = parsedRows[i];
-          const username = row.username.toLowerCase().trim();
-          accounts[username] = {
-            profile: {
-              user_id: 'local_' + username,
-              username,
-              parent_name: row.parent_name,
-              child_name: row.child_name,
-              contact_phone: row.contact_phone || null,
-            },
-            password: row.password || 'password123',
-            access: {
-              activationCode: 'BEE-' + Math.floor(1000 + Math.random() * 9000),
-              spellingBeeEnabled: Boolean(row.spelling_bee),
-              aiFeaturesEnabled: Boolean(row.ai_features),
-              beeTokens: row.bee_tokens || 100,
-            },
-            pendingRequest: null,
-          };
-          successCount++;
-          setProgress({ current: i + 1, total: parsedRows.length });
-        }
-        localStorage.setItem('little_bee_local_accounts_v1', JSON.stringify(accounts));
-      } catch (err: any) {
-        errors.push(err.message || 'Error saving to local storage.');
-      }
-      setImportLogs({ success: successCount, failed: failCount, errors });
-      setImporting(false);
-      setStep('result');
-      onSuccess();
-      return;
-    }
-
-    // Supabase Import via manage-parent-account edge function or inserts
     for (let i = 0; i < parsedRows.length; i++) {
       const row = parsedRows[i];
       setProgress({ current: i + 1, total: parsedRows.length });
-
       try {
-        const { data, error } = await supabase.functions.invoke('manage-parent-account', {
-          body: {
-            action: 'create',
-            username: row.username,
-            password: row.password || `bee${Math.floor(1000 + Math.random() * 9000)}pass`,
-            parentName: row.parent_name,
-            childName: row.child_name,
-            contactPhone: row.contact_phone || '',
-          },
-        });
-
-        if (error || data?.error) {
-          failCount++;
-          const errMsg = await getFunctionErrorMessage(error, data);
-          errors.push(`@${row.username}: ${errMsg}`);
-        } else {
-          successCount++;
-          // Optionally add tokens if specified > 0
-          if (row.bee_tokens && row.bee_tokens > 0 && data?.user?.id) {
-            await supabase.rpc('add_bee_tokens', {
-              p_user_id: data.user.id,
-              p_amount: row.bee_tokens,
-              p_reason: 'Initial Import Balance',
-            });
-          }
-        }
-      } catch (err: any) {
-        failCount++;
-        errors.push(`@${row.username}: ${err?.message || 'Network error'}`);
-      }
+        await manageParentAccount({ action: 'create', username: row.username, password: row.password,
+          parentName: row.parent_name, childName: row.child_name, contactPhone: row.contact_phone || '',
+          beeTokens: row.bee_tokens ?? 0, enableSpellingBee: Boolean(row.spelling_bee), enableAiFeatures: Boolean(row.ai_features) });
+        successCount++;
+      } catch (err) { failCount++; errors.push('@' + row.username + ': ' + (err instanceof Error ? err.message : 'Import failed')); }
     }
 
     setImportLogs({ success: successCount, failed: failCount, errors });

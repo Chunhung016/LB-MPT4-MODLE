@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   Bot,
@@ -27,7 +27,12 @@ import {
   X,
   Share2,
 } from 'lucide-react';
-import type { Session, User } from '@supabase/supabase-js';
+import { onAuthStateChanged, signOut as firebaseSignOut, type User } from 'firebase/auth';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { auth, db } from '../lib/firebase';
+import { authErrorMessage } from '../lib/authErrors';
+import { manageParentAccount } from '../lib/accountApi';
+import { tokenAmount } from '../lib/accountValidation';
 import PeacefulBeeBackground from './PeacefulBeeBackground';
 import ActivationQrScannerModal from './ActivationQrScannerModal';
 import ResetPasswordModal from './ResetPasswordModal';
@@ -35,29 +40,8 @@ import BulkImportModal from './BulkImportModal';
 import PrintableRosterModal, { RosterItem } from './PrintableRosterModal';
 import AdminMaintenanceTab from './AdminMaintenanceTab';
 import { useMaintenance } from '../context/MaintenanceContext';
-import {
-  isSupabaseConfigured,
-  supabase,
-  getFunctionErrorMessage,
-  isClockSkewError,
-  withClockSkewRetry,
-} from '../lib/supabase';
 import { exportToCSV, exportToJSON } from '../utils/csvHelper';
-import {
-  getAllDevices,
-  getAllParentProfiles,
-  getParentProfile,
-  getPendingActivationRequests,
-  saveParentProfile,
-  saveDevice,
-  updateActivationRequestStatus,
-  deleteParentProfile,
-  isStaffUser,
-  authenticateStaffUser,
-  FirebaseParentProfile,
-  FirebaseDevice,
-} from '../services/firebaseDb';
-import { migrateAllDataToFirebase, MigrationSummary } from '../services/dataMigration';
+import { getAllDevices, getAllParentProfiles, getPendingActivationRequests, authenticateStaffUser, setParentProduct, setDeviceProduct, addBeeTokens, approveActivation } from '../services/firebaseDb';
 
 interface EntitlementRow {
   id: string;
@@ -117,9 +101,10 @@ function hasProduct(device: DeviceRow, productSlug: 'spelling_bee' | 'ai_feature
 
 export default function AdminPortal() {
   const { isMaintenanceBlocking } = useMaintenance();
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSession] = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [isStaff, setIsStaff] = useState(false);
+  const approvedUid = useRef<string | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState<string | null>(null);
@@ -137,8 +122,6 @@ export default function AdminPortal() {
   const [dataError, setDataError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [checkingStaff, setCheckingStaff] = useState(false);
-  const [copiedSql, setCopiedSql] = useState(false);
   
   // Modals
   const [showAddParent, setShowAddParent] = useState(false);
@@ -158,333 +141,43 @@ export default function AdminPortal() {
   const [printRosterOpen, setPrintRosterOpen] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [reloadAmounts, setReloadAmounts] = useState<Record<string, string>>({});
-  const [migrationResult, setMigrationResult] = useState<MigrationSummary | null>(null);
-  const [migrating, setMigrating] = useState(false);
-
-  const checkStaff = useCallback(async (user: User | null): Promise<boolean> => {
-    if (!user) {
-      setIsStaff(false);
-      return false;
-    }
-
-    const userEmail = user.email?.toLowerCase().trim() || '';
-    const isMasterAdmin =
-      userEmail === 'admin@lb.com' ||
-      userEmail === 'chunhung520@gmail.com' ||
-      userEmail.startsWith('admin@');
-
-    if (isMasterAdmin) {
-      setIsStaff(true);
-      setAuthError(null);
-      return true;
-    }
-
-    // Check Firebase staff users
-    try {
-      const fbStaff = await isStaffUser(userEmail);
-      if (fbStaff) {
-        setIsStaff(true);
-        setAuthError(null);
-        return true;
-      }
-    } catch {
-      // continue
-    }
-
-    if (!isSupabaseConfigured) {
-      setIsStaff(true);
-      return true;
-    }
-
-    const { data, error } = await withClockSkewRetry(async () => {
-      return await supabase
-        .from('staff_users')
-        .select('user_id')
-        .eq('user_id', user.id)
-        .maybeSingle();
-    }, 4, 1200);
-
-    if (error) {
-      if (isClockSkewError(error)) {
-        setAuthError('Clock synchronizing with server. Please try again in a few seconds.');
-      } else {
-        setAuthError(error.message);
-      }
-      setIsStaff(false);
-      return false;
-    }
-
-    const allowed = Boolean(data);
-    setIsStaff(allowed);
-    if (allowed) {
-      setAuthError(null);
-    }
-    return allowed;
-  }, []);
-
-  const loadLocalData = useCallback(() => {
-    try {
-      const raw = localStorage.getItem('little_bee_local_accounts_v1');
-      if (raw) {
-        const localAccounts = JSON.parse(raw);
-        const localProfiles: Record<string, ParentProfileRow> = {};
-        const localWallets: Record<string, number> = {};
-        const localDevices: DeviceRow[] = [];
-
-        Object.values(localAccounts).forEach((acc: any) => {
-          if (acc?.profile) {
-            localProfiles[acc.profile.user_id] = {
-              ...acc.profile,
-              spelling_bee_enabled: Boolean(acc.access?.spellingBeeEnabled),
-              ai_features_enabled: Boolean(acc.access?.aiFeaturesEnabled),
-              bee_tokens: Number(acc.access?.beeTokens ?? 0),
-              activation_code: acc.access?.activationCode,
-            };
-            localWallets[acc.profile.user_id] = Number(acc.access?.beeTokens ?? 0);
-            if (acc.access?.activationCode) {
-              localDevices.push({
-                id: 'dev_' + acc.profile.user_id,
-                activation_code: acc.access.activationCode,
-                parent_name: acc.profile.parent_name,
-                child_name: acc.profile.child_name,
-                notes: 'Local App Device',
-                created_at: new Date().toISOString(),
-                last_seen_at: new Date().toISOString(),
-                owner_user_id: acc.profile.user_id,
-                entitlements: [
-                  {
-                    id: 'ent_spelling_' + acc.profile.user_id,
-                    product_slug: 'spelling_bee',
-                    active: Boolean(acc.access?.spellingBeeEnabled),
-                    expires_at: null,
-                  },
-                  {
-                    id: 'ent_ai_' + acc.profile.user_id,
-                    product_slug: 'ai_features',
-                    active: Boolean(acc.access?.aiFeaturesEnabled),
-                    expires_at: null,
-                  },
-                ],
-              });
-            }
-          }
-        });
-
-        return { localProfiles, localWallets, localDevices };
-      }
-    } catch {
-      // ignore
-    }
-    return { localProfiles: {}, localWallets: {}, localDevices: [] };
-  }, []);
 
   const loadDevices = useCallback(async () => {
     setDataError(null);
-
-    // 1. Fetch from Firebase Firestore
+    const uid = approvedUid.current;
+    if (!uid) return;
     try {
-      const [fbDevices, fbProfiles, fbRequests] = await Promise.all([
-        getAllDevices(),
-        getAllParentProfiles(),
-        getPendingActivationRequests(),
-      ]);
-
-      if (fbDevices.length > 0 || Object.keys(fbProfiles).length > 0 || fbRequests.length > 0) {
-        const mappedDevices: DeviceRow[] = fbDevices.map((d) => ({
-          id: d.id,
-          activation_code: d.activation_code,
-          parent_name: d.parent_name || null,
-          child_name: d.child_name || null,
-          notes: d.notes || null,
-          created_at: d.created_at,
-          last_seen_at: d.last_seen_at,
-          owner_user_id: d.owner_user_id || null,
-          entitlements: [
-            {
-              id: `${d.id}_spelling`,
-              product_slug: 'spelling_bee',
-              active: Boolean(d.spelling_bee_enabled),
-              expires_at: null,
-            },
-            {
-              id: `${d.id}_ai`,
-              product_slug: 'ai_features',
-              active: Boolean(d.ai_features_enabled),
-              expires_at: null,
-            },
-          ],
-        }));
-
-        const mappedProfiles: Record<string, ParentProfileRow> = {};
-        const mappedWallets: Record<string, number> = {};
-        Object.values(fbProfiles).forEach((p) => {
-          mappedProfiles[p.user_id] = {
-            user_id: p.user_id,
-            username: p.username,
-            parent_name: p.parent_name,
-            child_name: p.child_name,
-            contact_phone: p.contact_phone || null,
-            spelling_bee_enabled: Boolean(p.spelling_bee_enabled),
-            ai_features_enabled: Boolean(p.ai_features_enabled),
-            bee_tokens: Number(p.bee_tokens ?? 0),
-            activation_code: p.activation_code,
-          };
-          mappedWallets[p.user_id] = Number(p.bee_tokens ?? 0);
-        });
-
-        const mappedRequests: ActivationRequestRow[] = fbRequests.map((r) => ({
-          id: r.id,
-          request_code: r.request_code,
-          user_id: r.user_id,
-          device_id: r.device_id,
-          wants_spelling_bee: r.wants_spelling_bee,
-          wants_ai: r.wants_ai,
-          status: r.status,
-          requested_at: r.requested_at,
-        }));
-
-        const { localProfiles, localWallets, localDevices } = loadLocalData();
-        const finalDevices = [...mappedDevices];
-        localDevices.forEach((ld) => {
-          if (!finalDevices.some((fd) => fd.id === ld.id)) {
-            finalDevices.push(ld);
-          }
-        });
-
-        setDevices(finalDevices);
-        setActivationRequests(mappedRequests);
-        setProfiles({ ...localProfiles, ...mappedProfiles });
-        setWallets({ ...localWallets, ...mappedWallets });
-        return;
-      }
-    } catch (fbErr) {
-      console.warn('Firebase device fetch fallback:', fbErr);
-    }
-
-    if (!isSupabaseConfigured) {
-      const { localProfiles, localWallets, localDevices } = loadLocalData();
-      setProfiles(localProfiles);
-      setWallets(localWallets);
-      setDevices(localDevices);
-      setActivationRequests([]);
-      return;
-    }
-
-    const [deviceResult, requestResult, profileResult, walletResult] = await withClockSkewRetry(
-      async () => {
-        return await Promise.all([
-          supabase
-            .from('devices')
-            .select(
-              'id, activation_code, parent_name, child_name, notes, created_at, last_seen_at, owner_user_id, entitlements(id, product_slug, active, expires_at)'
-            )
-            .order('last_seen_at', { ascending: false }),
-          supabase
-            .from('activation_requests')
-            .select(
-              'id, request_code, user_id, device_id, wants_spelling_bee, wants_ai, status, requested_at'
-            )
-            .eq('status', 'pending')
-            .order('requested_at', { ascending: true }),
-          supabase
-            .from('parent_profiles')
-            .select('user_id, username, parent_name, child_name, contact_phone, spelling_bee_enabled, ai_features_enabled, bee_tokens, activation_code'),
-          supabase.from('bee_token_wallets').select('user_id, balance'),
-        ]);
-      },
-      4,
-      1200
-    );
-
-    const firstError =
-      deviceResult.error ?? requestResult.error ?? profileResult.error ?? walletResult.error;
-    if (firstError) {
-      if (isClockSkewError(firstError)) {
-        setDataError('Database clock synchronizing. Please tap refresh in a moment.');
-      } else {
-        setDataError(firstError.message);
-      }
-      return;
-    }
-
-    const cloudProfiles = Object.fromEntries(
-      ((profileResult.data ?? []) as ParentProfileRow[]).map((p) => [p.user_id, p])
-    );
-    const cloudWallets = Object.fromEntries(
-      (walletResult.data ?? []).map((w) => [w.user_id, Number(w.balance)])
-    );
-
-    // Merge any local accounts if present
-    const { localProfiles, localWallets } = loadLocalData();
-    const mergedProfiles = { ...localProfiles, ...cloudProfiles };
-    const mergedWallets = { ...localWallets, ...cloudWallets };
-
-    setDevices((deviceResult.data ?? []) as DeviceRow[]);
-    setActivationRequests((requestResult.data ?? []) as ActivationRequestRow[]);
-    setProfiles(mergedProfiles);
-    setWallets(mergedWallets);
-  }, [loadLocalData]);
+      const [rows, parents, requests] = await Promise.all([getAllDevices(), getAllParentProfiles(), getPendingActivationRequests()]);
+      if (auth.currentUser?.uid !== uid || approvedUid.current !== uid) return;
+      setDevices(rows.map(d => ({ ...d, parent_name: d.parent_name ?? null, child_name: d.child_name ?? null,
+        notes: d.notes ?? null, owner_user_id: d.owner_user_id ?? null,
+        entitlements: ['spelling_bee', 'ai_features'].map(product => ({ id: d.id + product, product_slug: product,
+          active: Boolean(d.owner_user_id && parents[d.owner_user_id] ? parents[d.owner_user_id][product + '_enabled'] : d[product + '_enabled']), expires_at: null })) })));
+      setProfiles(parents);
+      setWallets(Object.fromEntries(Object.values(parents).map(p => [p.user_id, p.bee_tokens])));
+      setActivationRequests(requests);
+    } catch (error) { setDataError(authErrorMessage(error)); }
+  }, []);
 
   useEffect(() => {
-    const adminRaw = localStorage.getItem('little_bee_admin_session_v1');
-    if (adminRaw) {
-      try {
-        const saved = JSON.parse(adminRaw);
-        if (saved?.email) {
-          setIsStaff(true);
-          setAuthReady(true);
-          void loadDevices();
-          return;
-        }
-      } catch {
-        // ignore
-      }
-    }
-
-    if (!isSupabaseConfigured) {
-      setAuthReady(true);
-      setIsStaff(true);
-      void loadDevices();
-      return;
-    }
-
-    let isMounted = true;
-
-    void supabase.auth.getSession().then(async ({ data, error }) => {
-      if (!isMounted) return;
-      if (error) {
-        if (!isClockSkewError(error)) {
-          setAuthError(`Unable to connect to Supabase Auth: ${error.message}`);
-        }
-        setAuthReady(true);
-        return;
-      }
-      setSession(data.session);
-      if (data.session?.user) {
-        const allowed = await checkStaff(data.session.user);
-        if (allowed && isMounted) await loadDevices();
-      }
-      if (isMounted) setAuthReady(true);
-    });
-
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      if (!isMounted) return;
-      setSession(nextSession);
-      if (nextSession?.user) {
-        window.setTimeout(() => {
-          if (!isMounted) return;
-          void checkStaff(nextSession.user).then((allowed) => {
-            if (allowed && isMounted) void loadDevices();
-          });
-        }, 600);
-      }
-    });
-
-    return () => {
-      isMounted = false;
-      listener.subscription.unsubscribe();
-    };
-  }, [checkStaff, loadDevices]);
+    let stopStaff: (() => void) | undefined;
+    const clearData = () => { setDevices([]); setProfiles({}); setWallets({}); setActivationRequests([]); };
+    const stopAuth = onAuthStateChanged(auth, user => {
+      stopStaff?.();
+      approvedUid.current = null;
+      setSession(user); setIsStaff(false); clearData();
+      if (!user?.email) { setAuthReady(true); return; }
+      setAuthReady(false);
+      stopStaff = onSnapshot(doc(db, 'staff_users', user.email.toLowerCase()), snapshot => {
+        const data = snapshot.data();
+        const allowed = data?.user_id === user.uid && data?.active === true && ['admin', 'staff'].includes(data?.role);
+        approvedUid.current = allowed ? user.uid : null;
+        setIsStaff(allowed); setAuthReady(true);
+        if (allowed) { setAuthError(null); void loadDevices(); } else { clearData(); }
+      }, error => { approvedUid.current = null; setIsStaff(false); clearData(); setAuthError(authErrorMessage(error)); setAuthReady(true); });
+    }, error => { setAuthError(authErrorMessage(error)); setAuthReady(true); });
+    return () => { stopAuth(); stopStaff?.(); };
+  }, [loadDevices]);
 
   // Combined Roster for Parent Directory & Export
   const allParentRoster: RosterItem[] = useMemo(() => {
@@ -553,150 +246,24 @@ export default function AdminPortal() {
   }, [activationRequests, activationSearch, profiles]);
 
   const signIn = async (event: FormEvent) => {
-    event.preventDefault();
-    setBusy(true);
-    setAuthError(null);
-
+    event.preventDefault(); setBusy(true); setAuthError(null);
     try {
-      const cleanEmail = email.trim().toLowerCase();
-      const authResult = await authenticateStaffUser(cleanEmail, password);
-
-      if (authResult.success) {
-        setIsStaff(true);
-        localStorage.setItem(
-          'little_bee_admin_session_v1',
-          JSON.stringify({ email: cleanEmail, role: authResult.role || 'admin', loggedAt: Date.now() })
-        );
-        await loadDevices();
-        setBusy(false);
-        return;
-      }
-
-      // Try Supabase auth if configured as fallback
-      if (isSupabaseConfigured) {
-        let res = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
-        if (res.error && isClockSkewError(res.error)) {
-          await new Promise((r) => setTimeout(r, 1200));
-          res = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
-        }
-
-        if (res.data?.session?.user) {
-          const allowed = await checkStaff(res.data.session.user);
-          if (allowed) {
-            setSession(res.data.session);
-            localStorage.setItem(
-              'little_bee_admin_session_v1',
-              JSON.stringify({ email: cleanEmail, role: 'admin', loggedAt: Date.now() })
-            );
-            await loadDevices();
-            setBusy(false);
-            return;
-          }
-        }
-      }
-
-      setAuthError(authResult.error || 'Invalid credentials or staff access denied.');
-    } catch (err: any) {
-      setAuthError(err?.message || 'Authentication error');
-    } finally {
-      setBusy(false);
-    }
+      const result = await authenticateStaffUser(email, password);
+      if (!result.success) setAuthError(result.error || 'Unable to sign in.');
+      else setPassword('');
+    } finally { setBusy(false); }
   };
-
   const handleSignOut = async () => {
-    localStorage.removeItem('little_bee_admin_session_v1');
-    setIsStaff(false);
-    setSession(null);
-    if (isSupabaseConfigured) {
-      try {
-        await supabase.auth.signOut();
-      } catch {
-        // ignore
-      }
-    }
+    try { await firebaseSignOut(auth); } catch (error) { setAuthError(authErrorMessage(error)); }
   };
-
   const createParentAccount = async (event: FormEvent) => {
-    event.preventDefault();
-    setCreatingParent(true);
-    setDataError(null);
-
-    const cleanUsername = newParent.username.trim().toLowerCase();
-    const tokenCount = Number.parseInt(newParent.beeTokens, 10) || 0;
-
-    // 1. Save directly to Firebase Firestore
+    event.preventDefault(); setCreatingParent(true); setDataError(null);
     try {
-      const actCode = 'BEE-' + Math.floor(1000 + Math.random() * 9000);
-      const uid = 'usr_' + cleanUsername + '_' + Date.now().toString(36);
-      const newFbProfile: FirebaseParentProfile = {
-        user_id: uid,
-        username: cleanUsername,
-        password: newParent.password,
-        parent_name: newParent.parentName.trim(),
-        child_name: newParent.childName.trim(),
-        contact_phone: newParent.contactPhone.trim() || null,
-        activation_code: actCode,
-        spelling_bee_enabled: Boolean(newParent.enableSpellingBee),
-        ai_features_enabled: Boolean(newParent.enableAiFeatures),
-        bee_tokens: tokenCount,
-        created_at: new Date().toISOString(),
-      };
-      await saveParentProfile(newFbProfile);
-      await saveDevice({
-        id: 'dev_' + cleanUsername + '_' + Math.random().toString(36).substring(2, 7),
-        activation_code: actCode,
-        parent_name: newFbProfile.parent_name,
-        child_name: newFbProfile.child_name,
-        owner_user_id: uid,
-        owner_username: cleanUsername,
-        spelling_bee_enabled: Boolean(newParent.enableSpellingBee),
-        ai_features_enabled: Boolean(newParent.enableAiFeatures),
-        created_at: new Date().toISOString(),
-        last_seen_at: new Date().toISOString(),
-      });
-    } catch (fbErr) {
-      console.warn('Firebase create error:', fbErr);
-    }
-
-    // Local storage cache
-    const raw = localStorage.getItem('little_bee_local_accounts_v1') || '{}';
-    try {
-      const accounts = JSON.parse(raw);
-      accounts[cleanUsername] = {
-        profile: {
-          user_id: 'local_' + cleanUsername,
-          username: cleanUsername,
-          parent_name: newParent.parentName.trim(),
-          child_name: newParent.childName.trim(),
-          contact_phone: newParent.contactPhone.trim() || null,
-        },
-        password: newParent.password,
-        access: {
-          activationCode: 'BEE-' + Math.floor(1000 + Math.random() * 9000),
-          spellingBeeEnabled: Boolean(newParent.enableSpellingBee),
-          aiFeaturesEnabled: Boolean(newParent.enableAiFeatures),
-          beeTokens: tokenCount,
-        },
-        pendingRequest: null,
-      };
-      localStorage.setItem('little_bee_local_accounts_v1', JSON.stringify(accounts));
-    } catch {
-      // ignore
-    }
-
-    setNewParent({
-      username: '',
-      password: '',
-      parentName: '',
-      childName: '',
-      contactPhone: '',
-      enableSpellingBee: false,
-      enableAiFeatures: false,
-      beeTokens: '0',
-    });
-    setShowAddParent(false);
-    await loadDevices();
-    setCreatingParent(false);
+      await manageParentAccount({ action: 'create', ...newParent, beeTokens: tokenAmount(newParent.beeTokens) });
+      setNewParent({ username: '', password: '', parentName: '', childName: '', contactPhone: '', enableSpellingBee: false, enableAiFeatures: false, beeTokens: '0' });
+      setShowAddParent(false); await loadDevices();
+    } catch (error) { setDataError(authErrorMessage(error)); }
+    finally { setCreatingParent(false); }
   };
 
   const generateRandomPassword = () => {
@@ -748,305 +315,33 @@ _If you need your password reset, please contact reception!_`;
     exportToJSON(`little_bee_parents_backup_${new Date().toISOString().slice(0, 10)}.json`, allParentRoster);
   };
 
-  const setProductForUser = async (userId: string, productSlug: 'spelling_bee' | 'ai_features', active: boolean) => {
-    setSavingId(userId);
-    setDataError(null);
-
-    const isSpelling = productSlug === 'spelling_bee';
-    const profile = profiles[userId];
-
-    // 1. Update in Firebase Firestore
-    try {
-      if (profile?.username) {
-        const fbP = await getParentProfile(profile.username);
-        if (fbP) {
-          await saveParentProfile({
-            ...fbP,
-            spelling_bee_enabled: isSpelling ? active : Boolean(fbP.spelling_bee_enabled),
-            ai_features_enabled: !isSpelling ? active : Boolean(fbP.ai_features_enabled),
-          });
-        }
-      }
-
-      // Update any matching devices in Firestore
-      const userDevices = devices.filter((d) => d.owner_user_id === userId);
-      for (const dev of userDevices) {
-        await saveDevice({
-          ...dev,
-          spelling_bee_enabled: isSpelling ? active : Boolean(dev.spelling_bee_enabled),
-          ai_features_enabled: !isSpelling ? active : Boolean(dev.ai_features_enabled),
-          last_seen_at: new Date().toISOString(),
-        });
-      }
-    } catch (fbErr: any) {
-      console.warn('Firebase setProductForUser error:', fbErr);
-    }
-
-    // 2. Update local state immediately for instant responsive UI
-    setProfiles((prev) => {
-      if (!prev[userId]) return prev;
-      return {
-        ...prev,
-        [userId]: {
-          ...prev[userId],
-          spelling_bee_enabled: isSpelling ? active : prev[userId].spelling_bee_enabled,
-          ai_features_enabled: !isSpelling ? active : prev[userId].ai_features_enabled,
-        },
-      };
-    });
-
-    setDevices((prev) =>
-      prev.map((d) => {
-        if (d.owner_user_id !== userId) return d;
-        return {
-          ...d,
-          entitlements: (d.entitlements || []).map((e) =>
-            e.product_slug === productSlug ? { ...e, active } : e
-          ),
-        };
-      })
-    );
-
-    // Keep localStorage in sync if present
-    const raw = localStorage.getItem('little_bee_local_accounts_v1');
-    if (raw && profile?.username) {
-      try {
-        const accounts = JSON.parse(raw);
-        if (accounts[profile.username]) {
-          if (productSlug === 'spelling_bee') accounts[profile.username].access.spellingBeeEnabled = active;
-          if (productSlug === 'ai_features') accounts[profile.username].access.aiFeaturesEnabled = active;
-          localStorage.setItem('little_bee_local_accounts_v1', JSON.stringify(accounts));
-        }
-      } catch {
-        // ignore
-      }
-    }
-
-    setSavingId(null);
+  const runAction = async (id: string, operation: () => Promise<unknown>) => {
+    setSavingId(id); setDataError(null);
+    try { await operation(); await loadDevices(); }
+    catch (error) { setDataError(authErrorMessage(error)); }
+    finally { setSavingId(null); }
   };
-
-  const setProduct = async (device: DeviceRow, productSlug: 'spelling_bee' | 'ai_features', active: boolean) => {
-    setSavingId(device.id);
-    setDataError(null);
-
-    const isSpelling = productSlug === 'spelling_bee';
-    const existingEntitlements = device.entitlements || [];
-    const spellingActive = isSpelling ? active : (existingEntitlements.find(e => e.product_slug === 'spelling_bee')?.active ?? false);
-    const aiActive = !isSpelling ? active : (existingEntitlements.find(e => e.product_slug === 'ai_features')?.active ?? false);
-
-    // 1. Save to Firebase Firestore
-    try {
-      await saveDevice({
-        id: device.id,
-        activation_code: device.activation_code,
-        parent_name: device.parent_name,
-        child_name: device.child_name,
-        notes: device.notes,
-        owner_user_id: device.owner_user_id,
-        owner_username: device.owner_user_id ? profiles[device.owner_user_id]?.username : undefined,
-        spelling_bee_enabled: spellingActive,
-        ai_features_enabled: aiActive,
-        created_at: device.created_at,
-        last_seen_at: new Date().toISOString(),
-      });
-
-      if (device.owner_user_id) {
-        const prof = profiles[device.owner_user_id];
-        if (prof?.username) {
-          const fbP = await getParentProfile(prof.username);
-          if (fbP) {
-            await saveParentProfile({
-              ...fbP,
-              spelling_bee_enabled: spellingActive,
-              ai_features_enabled: aiActive,
-            });
-          }
-        }
-      }
-    } catch (fbErr) {
-      console.warn('Firebase setProduct error:', fbErr);
-    }
-
-    // Update local state
-    if (device.owner_user_id) {
-      setProfiles((prev) => {
-        if (!prev[device.owner_user_id!]) return prev;
-        return {
-          ...prev,
-          [device.owner_user_id!]: {
-            ...prev[device.owner_user_id!],
-            spelling_bee_enabled: isSpelling ? active : prev[device.owner_user_id!].spelling_bee_enabled,
-            ai_features_enabled: !isSpelling ? active : prev[device.owner_user_id!].ai_features_enabled,
-          },
-        };
-      });
-    }
-
-    setDevices((prev) =>
-      prev.map((d) => {
-        if (d.id !== device.id) return d;
-        return {
-          ...d,
-          entitlements: (d.entitlements || []).map((e) =>
-            e.product_slug === productSlug ? { ...e, active } : e
-          ),
-        };
-      })
-    );
-
-    setSavingId(null);
-  };
-
-  const reloadBeeTokensForUser = async (userId: string) => {
-    const amount = Number.parseInt(reloadAmounts[userId] ?? '', 10);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      setDataError('Enter a positive Bee Token reload amount.');
-      return;
-    }
-
-    setSavingId(userId);
-    setDataError(null);
-
-    // 1. Save to Firebase Firestore
-    try {
-      const prof = profiles[userId];
-      if (prof?.username) {
-        const fbP = await getParentProfile(prof.username);
-        if (fbP) {
-          const newTokens = (fbP.bee_tokens || 0) + amount;
-          await saveParentProfile({
-            ...fbP,
-            bee_tokens: newTokens,
-          });
-        }
-      }
-    } catch (fbErr) {
-      console.warn('Firebase reload tokens error:', fbErr);
-    }
-
-    setWallets((prev) => ({
-      ...prev,
-      [userId]: (prev[userId] ?? 0) + amount,
-    }));
-
-    setProfiles((prev) => {
-      if (!prev[userId]) return prev;
-      return {
-        ...prev,
-        [userId]: {
-          ...prev[userId],
-          bee_tokens: (prev[userId].bee_tokens ?? 0) + amount,
-        },
-      };
-    });
-
-    setReloadAmounts((current) => ({ ...current, [userId]: '' }));
-    setSavingId(null);
-  };
-
+  const setProductForUser = (userId: string, product: 'spelling_bee' | 'ai_features', active: boolean) =>
+    runAction(userId, () => setParentProduct(profiles[userId].username, product, active));
+  const setProduct = (device: DeviceRow, product: 'spelling_bee' | 'ai_features', active: boolean) =>
+    device.owner_user_id && profiles[device.owner_user_id]
+      ? setProductForUser(device.owner_user_id, product, active)
+      : runAction(device.id, () => setDeviceProduct(device.id, product, active));
+  const reloadBeeTokensForUser = (userId: string) => runAction(userId, async () => {
+    await addBeeTokens(profiles[userId].username, tokenAmount(reloadAmounts[userId], false));
+    setReloadAmounts(current => ({ ...current, [userId]: '' }));
+  });
   const deleteAccount = async (parent: RosterItem) => {
-    const confirmed = window.confirm(
-      `Delete account for ${parent.childName} (@${parent.username})? This permanently deletes the parent login, profile, linked device, and Bee Tokens.`
-    );
-    if (!confirmed) return;
-
-    setSavingId(parent.userId);
-    setDataError(null);
-
-    // Delete from Firebase Firestore
-    try {
-      if (parent.username) {
-        await deleteParentProfile(parent.username);
-      }
-    } catch (fbErr) {
-      console.warn('Firebase delete account error:', fbErr);
-    }
-
-    if (!isSupabaseConfigured || parent.userId.startsWith('local_')) {
-      const raw = localStorage.getItem('little_bee_local_accounts_v1');
-      if (raw) {
-        const accounts = JSON.parse(raw);
-        delete accounts[parent.username];
-        localStorage.setItem('little_bee_local_accounts_v1', JSON.stringify(accounts));
-      }
-      await loadDevices();
-      setSavingId(null);
-      return;
-    }
-
-    const { data, error } = await supabase.functions.invoke('manage-parent-account', {
-      body: { action: 'delete', userId: parent.userId },
-    });
-
-    if (error || data?.error) {
-      const msg = await getFunctionErrorMessage(error, data);
-      setDataError(msg || 'Unable to delete the parent account.');
-    } else {
-      await loadDevices();
-    }
-    setSavingId(null);
+    if (!window.confirm('Permanently delete @' + parent.username + ', its login, devices and tokens?')) return;
+    await runAction(parent.userId, () => manageParentAccount({ action: 'delete', username: parent.username }));
   };
-
-  const processActivation = async (request: ActivationRequestRow) => {
-    const draft = activationDrafts[request.id] ?? {
-      spellingBee: request.wants_spelling_bee,
-      ai: request.wants_ai,
-      tokens: request.wants_ai ? '100' : '0',
-    };
-    const tokenAmount = draft.ai ? Number.parseInt(draft.tokens, 10) : 0;
-    if (!draft.spellingBee && !draft.ai) {
-      setDataError('Select Spelling Bee, AI features, or both.');
-      return;
-    }
-    if (draft.ai && (!Number.isFinite(tokenAmount) || tokenAmount <= 0)) {
-      setDataError('Enter the purchased Bee Token amount before activating AI features.');
-      return;
-    }
-
-    setSavingId(request.id);
-    setDataError(null);
-
-    // 1. Process in Firebase Firestore
-    try {
-      await updateActivationRequestStatus(request.id, 'approved');
-      const targetDev = devices.find(d => d.id === request.device_id || d.owner_user_id === request.user_id);
-      if (targetDev) {
-        await saveDevice({
-          ...targetDev,
-          spelling_bee_enabled: draft.spellingBee,
-          ai_features_enabled: draft.ai,
-          last_seen_at: new Date().toISOString(),
-        });
-      }
-      const targetProf = (Object.values(profiles) as ParentProfileRow[]).find(p => p.user_id === request.user_id);
-      if (targetProf) {
-        const fbP = await getParentProfile(targetProf.username);
-        if (fbP) {
-          await saveParentProfile({
-            ...fbP,
-            spelling_bee_enabled: draft.spellingBee,
-            ai_features_enabled: draft.ai,
-            bee_tokens: (fbP.bee_tokens || 0) + tokenAmount,
-          });
-        }
-      }
-    } catch (fbErr) {
-      console.warn('Firebase process activation error:', fbErr);
-    }
-
-    if (isSupabaseConfigured) {
-      const { error } = await supabase.rpc('process_activation_request', {
-        p_request_code: request.request_code,
-        p_grant_spelling_bee: draft.spellingBee,
-        p_grant_ai: draft.ai,
-        p_bee_tokens: tokenAmount,
-      });
-      if (error) setDataError(error.message);
-    }
-
-    await loadDevices();
-    setSavingId(null);
-  };
+  const processActivation = (request: ActivationRequestRow) => runAction(request.id, async () => {
+    const draft = activationDrafts[request.id] ?? { spellingBee: request.wants_spelling_bee, ai: request.wants_ai, tokens: request.wants_ai ? '100' : '0' };
+    if (!draft.spellingBee && !draft.ai) throw new Error('Select at least one product.');
+    const parent = profiles[request.user_id];
+    if (!parent) throw new Error('Parent account no longer exists.');
+    await approveActivation(request.id, parent.username, draft.spellingBee, draft.ai, draft.ai ? tokenAmount(draft.tokens, false) : 0);
+  });
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#FFFBEB] px-4 py-6 text-[#78350F] sm:px-8">
@@ -1068,7 +363,7 @@ _If you need your password reset, please contact reception!_`;
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          {isStaff && <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => setImportModalOpen(true)}
@@ -1095,28 +390,6 @@ _If you need your password reset, please contact reception!_`;
             </button>
             <button
               type="button"
-              disabled={migrating}
-              onClick={async () => {
-                setMigrating(true);
-                setDataError(null);
-                try {
-                  const summary = await migrateAllDataToFirebase();
-                  setMigrationResult(summary);
-                  await loadDevices();
-                } catch (mErr: any) {
-                  setDataError(mErr?.message || 'Migration failed');
-                } finally {
-                  setMigrating(false);
-                }
-              }}
-              className="flex cursor-pointer items-center gap-1.5 rounded-full border-2 border-amber-400 bg-amber-400 px-4 py-2 text-xs font-black text-amber-950 shadow-xs hover:bg-amber-300 transition"
-              title="Migrate all parents, devices, and settings into Firebase Firestore"
-            >
-              <Sparkles className={`h-3.5 w-3.5 ${migrating ? 'animate-spin' : ''}`} />
-              {migrating ? 'Migrating...' : 'Migrate to Firebase'}
-            </button>
-            <button
-              type="button"
               onClick={() => void loadDevices()}
               className="flex cursor-pointer items-center gap-1.5 rounded-full border-2 border-amber-200 bg-white p-2 text-slate-700 hover:bg-amber-50 transition"
               title="Refresh all data"
@@ -1131,56 +404,14 @@ _If you need your password reset, please contact reception!_`;
             >
               <LogOut className="h-3.5 w-3.5" /> Sign out
             </button>
-          </div>
+          </div>}
         </header>
-
-        {migrationResult && (
-          <div className="mb-6 rounded-3xl border-2 border-emerald-300 bg-emerald-50/95 p-5 text-emerald-950 shadow-md backdrop-blur-xs">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-emerald-500 text-white shadow-xs">
-                  <Check className="h-5 w-5" />
-                </div>
-                <div>
-                  <h3 className="font-black text-emerald-900 text-base">Supabase Data Successfully Merged into Firebase!</h3>
-                  <p className="text-xs text-emerald-800 mt-0.5">
-                    All student profiles, device entitlements, token balances, staff access, and spelling bee leaderboard scores are now unified in Firebase Firestore.
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
-                    <span className="rounded-lg bg-emerald-200/80 px-2.5 py-1 text-emerald-900 border border-emerald-300">
-                      🐝 {migrationResult.parentProfilesCount} Parent Profiles
-                    </span>
-                    <span className="rounded-lg bg-emerald-200/80 px-2.5 py-1 text-emerald-900 border border-emerald-300">
-                      📱 {migrationResult.devicesCount} Devices
-                    </span>
-                    <span className="rounded-lg bg-emerald-200/80 px-2.5 py-1 text-emerald-900 border border-emerald-300">
-                      🏆 {migrationResult.leaderboardCount} Leaderboard Scores
-                    </span>
-                    <span className="rounded-lg bg-emerald-200/80 px-2.5 py-1 text-emerald-900 border border-emerald-300">
-                      🛡️ {migrationResult.staffUsersCount} Staff Accounts
-                    </span>
-                    <span className="rounded-lg bg-emerald-200/80 px-2.5 py-1 text-emerald-900 border border-emerald-300">
-                      ⚙️ {migrationResult.maintenanceSynced ? 'Maintenance Settings Synchronized' : 'System Settings Verified'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setMigrationResult(null)}
-                className="rounded-full p-1.5 text-emerald-700 hover:bg-emerald-100 transition shrink-0"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-          </div>
-        )}
 
         {!authReady ? (
           <div className="flex justify-center py-24">
             <LoaderCircle className="h-10 w-10 animate-spin text-amber-500" />
           </div>
-        ) : !session && isSupabaseConfigured ? (
+        ) : !session ? (
           <form
             onSubmit={signIn}
             className="mx-auto max-w-md rounded-3xl border-2 border-amber-200 bg-white/95 p-7 shadow-xl"
@@ -1192,20 +423,24 @@ _If you need your password reset, please contact reception!_`;
             <p className="mt-1 text-center text-sm text-amber-900/65">
               Only approved staff accounts can manage parent credentials and access.
             </p>
-            <label className="mt-6 block text-xs font-black uppercase tracking-wider">Email</label>
+            <label htmlFor="staff-email" className="mt-6 block text-xs font-black uppercase tracking-wider">Email</label>
             <input
               value={email}
               onChange={(event) => setEmail(event.target.value)}
+              id="staff-email"
+              autoComplete="username"
               type="email"
               required
               className="mt-1 w-full rounded-2xl border-2 border-amber-200 bg-amber-50/40 px-4 py-3 outline-none focus:border-amber-400"
             />
-            <label className="mt-4 block text-xs font-black uppercase tracking-wider">
+            <label htmlFor="staff-password" className="mt-4 block text-xs font-black uppercase tracking-wider">
               Password
             </label>
             <input
               value={password}
               onChange={(event) => setPassword(event.target.value)}
+              id="staff-password"
+              autoComplete="current-password"
               type="password"
               required
               className="mt-1 w-full rounded-2xl border-2 border-amber-200 bg-amber-50/40 px-4 py-3 outline-none focus:border-amber-400"
@@ -1224,78 +459,11 @@ _If you need your password reset, please contact reception!_`;
             </button>
           </form>
         ) : !isStaff ? (
-          <div className="mx-auto max-w-xl rounded-3xl border-2 border-rose-200 bg-white/95 p-8 text-center shadow-xl">
-            <UserRound className="mx-auto h-11 w-11 text-rose-500" />
-            <h2 className="mt-3 text-xl font-black text-slate-800">Account Not in Staff Directory</h2>
-            <p className="mt-2 text-sm text-slate-600">
-              Signed in as <strong className="text-slate-800">{session?.user?.email}</strong>. This account is authenticated with Supabase, but is not yet approved in the <code className="bg-slate-100 px-1.5 py-0.5 rounded text-xs">staff_users</code> table.
-            </p>
-
-            <div className="mt-5 flex items-center justify-center gap-3">
-              <button
-                type="button"
-                disabled={checkingStaff}
-                onClick={async () => {
-                  setCheckingStaff(true);
-                  setAuthError(null);
-                  try {
-                    const { data: sessionData } = await supabase.auth.getSession();
-                    const activeUser = sessionData.session?.user ?? session?.user ?? null;
-                    const allowed = await checkStaff(activeUser);
-                    if (allowed) {
-                      await loadDevices();
-                    } else {
-                      setAuthError('Account is not yet recognized as staff. Please check Supabase staff_users table.');
-                    }
-                  } catch (err: any) {
-                    setAuthError(err?.message || 'Error checking staff status.');
-                  } finally {
-                    setCheckingStaff(false);
-                  }
-                }}
-                className="flex items-center gap-1.5 rounded-full bg-amber-400 px-5 py-2.5 text-xs font-black text-amber-950 shadow-sm hover:bg-amber-300 transition cursor-pointer disabled:opacity-60"
-              >
-                {checkingStaff ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                Re-check Access
-              </button>
-              <button
-                type="button"
-                onClick={() => void supabase.auth.signOut()}
-                className="flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 transition cursor-pointer"
-              >
-                <LogOut className="h-3.5 w-3.5" /> Sign out
-              </button>
-            </div>
-
-            {authError && (
-              <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
-                {authError}
-              </p>
-            )}
-
-            {session?.user?.id && (
-              <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50/70 p-4 text-left">
-                <div className="flex items-center justify-between text-xs font-bold text-amber-900">
-                  <span>To approve this account in Supabase SQL Editor:</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const sql = `insert into public.staff_users (user_id, display_name, role)\nvalues ('${session.user.id}', '${session.user.email?.split('@')[0] || 'Admin'}', 'admin')\non conflict (user_id) do update set role = 'admin', active = true;`;
-                      navigator.clipboard.writeText(sql);
-                      setCopiedSql(true);
-                      setTimeout(() => setCopiedSql(false), 2000);
-                    }}
-                    className="flex items-center gap-1 text-[11px] font-black text-amber-800 hover:text-amber-950 cursor-pointer"
-                  >
-                    {copiedSql ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
-                    {copiedSql ? 'Copied!' : 'Copy SQL'}
-                  </button>
-                </div>
-                <pre className="mt-2 overflow-x-auto rounded-xl bg-slate-900 p-3 text-[11px] font-mono text-amber-200">
-                  {`insert into public.staff_users (user_id, display_name, role)\nvalues ('${session.user.id}', '${session.user.email?.split('@')[0] || 'Admin'}', 'admin')\non conflict (user_id) do update set role = 'admin', active = true;`}
-                </pre>
-              </div>
-            )}
+          <div className="mx-auto max-w-xl rounded-3xl bg-white p-8 text-center">
+            <h2 className="text-xl font-black">Staff access required</h2>
+            <p className="mt-3">{session.email} is signed in but has no active staff approval. Contact the administrator.</p>
+            {authError && <p role="alert" className="mt-3 text-rose-700">{authError}</p>}
+            <button className="mt-5 rounded-full bg-amber-400 px-5 py-3" onClick={() => void handleSignOut()}>Sign out</button>
           </div>
         ) : (
           <>
@@ -1991,7 +1159,9 @@ _If you need your password reset, please contact reception!_`;
       </div>
 
       {/* Modals */}
+      {isStaff && <>
       <ResetPasswordModal
+        key={resetModalUser?.user_id || 'closed'}
         isOpen={Boolean(resetModalUser)}
         onClose={() => setResetModalUser(null)}
         userId={resetModalUser?.user_id || ''}
@@ -2003,6 +1173,7 @@ _If you need your password reset, please contact reception!_`;
       />
 
       <BulkImportModal
+        key={importModalOpen ? 'open' : 'closed'}
         isOpen={importModalOpen}
         onClose={() => setImportModalOpen(false)}
         onSuccess={() => void loadDevices()}
@@ -2023,6 +1194,7 @@ _If you need your password reset, please contact reception!_`;
           setActiveTab('activation');
         }}
       />
+      </>}
     </main>
   );
 }

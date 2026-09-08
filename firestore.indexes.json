@@ -1,0 +1,11 @@
+{
+  "indexes": [{
+    "collectionGroup": "spelling_bee_leaderboard",
+    "queryScope": "COLLECTION",
+    "fields": [
+      { "fieldPath": "score", "order": "DESCENDING" },
+      { "fieldPath": "created_at", "order": "ASCENDING" }
+    ]
+  }],
+  "fieldOverrides": []
+}

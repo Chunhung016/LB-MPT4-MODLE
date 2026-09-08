@@ -8,7 +8,6 @@ import {
   useState,
 } from 'react';
 import { PostMaintenanceChangelog, SystemMaintenanceConfig } from '../types';
-import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import {
   getSystemMaintenance,
   saveSystemMaintenance,
@@ -191,69 +190,10 @@ export function MaintenanceProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Direct fetch fallback for mobile and tablet browsers
-  const fetchDirectMaintenanceSetting = useCallback(async () => {
-    try {
-      const response = await fetch(
-        `https://yneayotsllbfslziwijm.supabase.co/rest/v1/app_settings?key=eq.system_maintenance&select=value`,
-        {
-          headers: {
-            apikey: 'sb_publishable_d8LQQOSBMM-opWxRA5mTWg_XuwCVTKP',
-            Authorization: 'Bearer sb_publishable_d8LQQOSBMM-opWxRA5mTWg_XuwCVTKP',
-          },
-          cache: 'no-store',
-        }
-      );
-      if (response.ok) {
-        const rows = await response.json();
-        if (Array.isArray(rows) && rows.length > 0 && rows[0]?.value) {
-          const raw = rows[0].value;
-          const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-          applyNewConfig(parsed);
-          return true;
-        }
-      }
-    } catch {
-      // ignore
-    }
-    return false;
-  }, [applyNewConfig]);
-
-  // Sync from Firebase (primary) and fallbacks
   const refreshMaintenanceStatus = useCallback(async () => {
-    // 1. Primary: Firebase Firestore
-    try {
-      const fbConfig = await getSystemMaintenance();
-      if (fbConfig) {
-        applyNewConfig(fbConfig);
-        return;
-      }
-    } catch {
-      // fallback
-    }
-
-    // 2. Supabase if configured
-    if (isSupabaseConfigured) {
-      try {
-        const { data, error } = await supabase
-          .from('app_settings')
-          .select('value')
-          .eq('key', 'system_maintenance')
-          .maybeSingle();
-
-        if (!error && data?.value) {
-          const parsed = typeof data.value === 'string' ? JSON.parse(data.value) : data.value;
-          applyNewConfig(parsed);
-          return;
-        }
-      } catch {
-        // fallback
-      }
-    }
-
-    // 3. HTTP REST direct fetch fallback (vital for mobile Safari / Chrome)
-    await fetchDirectMaintenanceSetting();
-  }, [applyNewConfig, fetchDirectMaintenanceSetting]);
+    try { applyNewConfig(await getSystemMaintenance() ?? DEFAULT_MAINTENANCE_CONFIG); }
+    catch (error) { console.warn('Maintenance refresh unavailable:', error); }
+  }, [applyNewConfig]);
 
   // Realtime multi-device sync, cross-tab listener, and focus/wake listeners
   useEffect(() => {
@@ -299,40 +239,10 @@ export function MaintenanceProvider({ children }: { children: ReactNode }) {
     let unsubscribeFb: (() => void) | null = null;
     try {
       unsubscribeFb = subscribeSystemMaintenance((fbConfig) => {
-        if (fbConfig) {
-          applyNewConfig(fbConfig);
-        }
+        applyNewConfig(fbConfig ?? DEFAULT_MAINTENANCE_CONFIG);
       });
     } catch (err) {
       console.warn('Firebase realtime subscription skipped:', err);
-    }
-
-    // Setup Supabase Realtime channel for secondary fallback
-    let realtimeChannel: any = null;
-    if (isSupabaseConfigured) {
-      try {
-        realtimeChannel = supabase
-          .channel('acebee_maintenance_realtime')
-          .on(
-            'postgres_changes',
-            {
-              event: '*',
-              schema: 'public',
-              table: 'app_settings',
-              filter: 'key=eq.system_maintenance',
-            },
-            (payload) => {
-              if (payload.new && (payload.new as any).value) {
-                const rawVal = (payload.new as any).value;
-                const parsed = typeof rawVal === 'string' ? JSON.parse(rawVal) : rawVal;
-                applyNewConfig(parsed);
-              }
-            }
-          )
-          .subscribe();
-      } catch (err) {
-        console.warn('Realtime subscription setup skipped:', err);
-      }
     }
 
     // Rapid fallback poll interval (every 6s) to ensure mobile devices sync without delay
@@ -352,66 +262,19 @@ export function MaintenanceProvider({ children }: { children: ReactNode }) {
           // ignore
         }
       }
-      if (realtimeChannel) {
-        try {
-          supabase.removeChannel(realtimeChannel);
-        } catch {
-          // ignore
-        }
-      }
       clearInterval(pollInterval);
     };
   }, [refreshMaintenanceStatus, applyNewConfig]);
 
-  const saveConfig = useCallback(
-    async (nextConfig: SystemMaintenanceConfig) => {
-      const updated = {
-        ...nextConfig,
-        updatedAt: new Date().toISOString(),
-      };
-      applyNewConfig(updated);
-
-      try {
-        if (typeof BroadcastChannel !== 'undefined') {
-          const channel = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
-          channel.postMessage({ type: 'MAINTENANCE_UPDATE', config: updated });
-          channel.close();
-        }
-      } catch {
-        // ignore
-      }
-
-      // 1. Primary: Save to Firebase Firestore
-      try {
-        await saveSystemMaintenance(updated);
-      } catch (fbErr) {
-        console.warn('Firebase maintenance save failed:', fbErr);
-      }
-
-      // 2. Secondary: Sync to Supabase if configured
-      if (isSupabaseConfigured) {
-        try {
-          const { error: upsertError } = await supabase
-            .from('app_settings')
-            .upsert(
-              { key: 'system_maintenance', value: updated, updated_at: new Date().toISOString() },
-              { onConflict: 'key' }
-            );
-
-          if (upsertError) {
-            // Try helper RPC as secondary avenue
-            await supabase.rpc('set_app_setting', {
-              p_key: 'system_maintenance',
-              p_value: updated,
-            });
-          }
-        } catch (err) {
-          console.error('Failed to sync maintenance config to Supabase:', err);
-        }
-      }
-    },
-    [applyNewConfig]
-  );
+  const saveConfig = useCallback(async (nextConfig: SystemMaintenanceConfig) => {
+    const updated = { ...nextConfig, updatedAt: new Date().toISOString() };
+    await saveSystemMaintenance(updated);
+    applyNewConfig(updated);
+    try {
+      const channel = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
+      channel.postMessage({ type: 'MAINTENANCE_UPDATE', config: updated }); channel.close();
+    } catch { /* Firestore remains authoritative when BroadcastChannel is unavailable. */ }
+  }, [applyNewConfig]);
 
   const enableImmediateMaintenance = useCallback(
     async (durationMinutes: number) => {

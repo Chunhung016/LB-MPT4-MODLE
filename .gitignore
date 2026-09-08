@@ -11,5 +11,8 @@ skills-lock.json
 !.env.example
 
 .vercel
+private/
+*-service-account.json
+firebase-export/
 .env*
 !.env.example

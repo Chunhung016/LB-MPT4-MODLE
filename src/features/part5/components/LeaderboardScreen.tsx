@@ -36,7 +36,7 @@ export const LeaderboardScreen: React.FC<LeaderboardScreenProps> = ({
   highlightEntryId,
 }) => {
   const { profile } = useParentAccount();
-  const childName = profile?.childName?.trim() || 'Learner';
+  const childName = profile?.child_name?.trim() || 'Learner';
 
   const [activeTab, setActiveTab] = useState<'all' | 'today'>('all');
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
@@ -49,8 +49,8 @@ export const LeaderboardScreen: React.FC<LeaderboardScreenProps> = ({
     try {
       const data = await fetchLeaderboard(tab);
       setEntries(data);
-    } catch {
-      // ignore
+    } catch (error) {
+      setClearMessage(error instanceof Error ? error.message : 'Unable to load leaderboard.');
     } finally {
       setLoading(false);
     }
@@ -67,11 +67,13 @@ export const LeaderboardScreen: React.FC<LeaderboardScreenProps> = ({
 
   const handleClearData = async () => {
     sound.playPop();
+    try {
     await clearAllLeaderboard();
     setEntries([]);
     setShowClearConfirm(false);
     setClearMessage('All leaderboard data has been reset.');
     setTimeout(() => setClearMessage(null), 3000);
+    } catch (error) { setShowClearConfirm(false); setClearMessage(error instanceof Error ? error.message : 'Unable to clear scores.'); }
   };
 
   const childStats = getChildLeaderboardStats(entries, childName);

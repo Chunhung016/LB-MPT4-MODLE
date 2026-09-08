@@ -68,6 +68,13 @@ export default function AdminMaintenanceTab() {
   });
 
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const runSave = async (operation: () => Promise<void>) => {
+    setSaving(true); setSaveError(null); setSaveSuccess(false);
+    try { await operation(); }
+    catch (error) { setSaveError(error instanceof Error ? error.message : 'Unable to save maintenance settings.'); }
+    finally { setSaving(false); }
+  };
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewChangelogOpen, setPreviewChangelogOpen] = useState(false);
@@ -91,16 +98,16 @@ export default function AdminMaintenanceTab() {
   const remainingSeconds = totalRemainingSeconds % 60;
 
   const handleSaveForm = async (e?: FormEvent) => {
+    await runSave(async () => {
     if (e) e.preventDefault();
-    setSaving(true);
     await saveConfig(editForm);
-    setSaving(false);
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 2500);
+    });
   };
 
   const handleQuickImmediate = async (minutes: number) => {
-    setSaving(true);
+    await runSave(async () => {
     await enableImmediateMaintenance(minutes);
     setEditForm((prev) => ({
       ...prev,
@@ -109,10 +116,11 @@ export default function AdminMaintenanceTab() {
       scheduledEnd: new Date(Date.now() + minutes * 60 * 1000).toISOString(),
     }));
     setSaving(false);
+    });
   };
 
   const handleExtend = async (addedMinutes: number) => {
-    setSaving(true);
+    await runSave(async () => {
     const currentEnd = config.scheduledEnd ? new Date(config.scheduledEnd).getTime() : Date.now();
     const newEnd = new Date(Math.max(Date.now(), currentEnd) + addedMinutes * 60 * 1000);
     const nextConfig: SystemMaintenanceConfig = {
@@ -124,9 +132,11 @@ export default function AdminMaintenanceTab() {
     await saveConfig(nextConfig);
     setEditForm(nextConfig);
     setSaving(false);
+    });
   };
 
   const handleApplySchedule = async () => {
+    await runSave(async () => {
     const startIso = new Date(customStart).toISOString();
     const endIso = new Date(customEnd).toISOString();
 
@@ -135,7 +145,6 @@ export default function AdminMaintenanceTab() {
       return;
     }
 
-    setSaving(true);
     await scheduleMaintenance(startIso, endIso, editForm);
     setEditForm((prev) => ({
       ...prev,
@@ -143,9 +152,9 @@ export default function AdminMaintenanceTab() {
       scheduledStart: startIso,
       scheduledEnd: endIso,
     }));
-    setSaving(false);
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 2500);
+    });
   };
 
   // Helper for adding new highlight in post-maintenance notes
@@ -198,6 +207,7 @@ export default function AdminMaintenanceTab() {
 
   // Broadcast current changelog as a new release to all users immediately
   const handleBroadcastChangelog = async () => {
+    await runSave(async () => {
     const newReleaseId = `rel_${Date.now()}`;
     const currentChangelog = editForm.postMaintenanceChangelog || DEFAULT_POST_MAINTENANCE_CHANGELOG;
     const updatedChangelog: PostMaintenanceChangelog = {
@@ -210,19 +220,19 @@ export default function AdminMaintenanceTab() {
       postMaintenanceChangelog: updatedChangelog,
       updatedAt: new Date().toISOString(),
     };
-    setSaving(true);
     await saveConfig(nextConfig);
     setEditForm(nextConfig);
-    setSaving(false);
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 2500);
     alert('✨ Release Notes broadcasted! All users will see this "What\'s New" modal once upon opening the app.');
+    });
   };
 
   const changelogData = editForm.postMaintenanceChangelog || DEFAULT_POST_MAINTENANCE_CHANGELOG;
 
   return (
     <div id="admin-maintenance-tab-container" className="space-y-6">
+      {saveError && <p role="alert" className="rounded-xl bg-rose-50 p-4 text-rose-700">{saveError}</p>}
       {/* 1. TOP STATUS & EMERGENCY CONTROLS BAR */}
       <section
         id="maintenance-master-status-card"
@@ -289,7 +299,7 @@ export default function AdminMaintenanceTab() {
                 <button
                   id="admin-stop-maintenance-btn"
                   type="button"
-                  onClick={() => void disableMaintenance(true)}
+                  onClick={() => void runSave(() => disableMaintenance(true))}
                   disabled={saving}
                   className="flex cursor-pointer items-center gap-2 rounded-full bg-emerald-600 px-5 py-2.5 text-xs font-black text-white shadow-lg hover:bg-emerald-700 active:scale-95 transition"
                 >

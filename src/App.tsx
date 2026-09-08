@@ -14,7 +14,6 @@ import { ParentAccountProvider, useParentAccount } from './context/ParentAccount
 import { MaintenanceProvider, useMaintenance } from './context/MaintenanceContext';
 import MaintenanceAnnouncementScreen from './components/MaintenanceAnnouncementScreen';
 import PostMaintenanceModal from './components/PostMaintenanceModal';
-import { migrateAllDataToFirebase } from './services/dataMigration';
 
 const DEFAULT_CONFIG: LogicConfig = {
   systemVersion: 'MPT4-2026.1.0',
@@ -306,10 +305,6 @@ function MaintenanceAppWrapper() {
 export default function App() {
   const isAdminRoute = window.location.pathname.replace(/\/+$/, '') === '/admin';
 
-  useEffect(() => {
-    // Run background migration to ensure all parent profiles, devices, and settings exist in Firebase
-    void migrateAllDataToFirebase();
-  }, []);
 
   return (
     <MaintenanceProvider>

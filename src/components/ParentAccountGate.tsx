@@ -46,25 +46,17 @@ export default function ParentAccountGate({ children }: { children: ReactNode })
     await signUp({ username, password, parentName, childName, contactPhone });
   };
 
-  const handleQuickDemo = async () => {
-    setFormError(null);
-    clearError();
-    const success = await signIn('demoparent', 'demopassword123');
-    if (!success) {
-      await signUp({
-        username: 'demoparent',
-        password: 'demopassword123',
-        parentName: 'Sarah Jenkins',
-        childName: 'Leo Jenkins',
-        contactPhone: '555-0199',
-      });
-    }
-  };
-
   if (loading) {
     return <div className="flex min-h-screen items-center justify-center bg-[#FFFBEB]"><LoaderCircle className="h-11 w-11 animate-spin text-amber-500" /></div>;
   }
 
+  if (session && !profile) {
+    return <main className="flex min-h-screen items-center justify-center bg-amber-50 p-6"><div className="max-w-md rounded-3xl bg-white p-8 text-center">
+      <h1 className="text-xl font-bold">Account setup required</h1>
+      <p role="alert" className="mt-3">{error || 'This login does not have an available parent profile. Please contact reception.'}</p>
+      <button className="mt-5 rounded-full bg-amber-400 px-6 py-3" onClick={() => void signOut()}>Sign out</button>
+    </div></main>;
+  }
   if (!session) {
     return (
       <main className="relative flex min-h-screen items-center justify-center overflow-x-hidden bg-[#FFFBEB] p-5 py-8 text-[#78350F]">
@@ -125,14 +117,6 @@ export default function ParentAccountGate({ children }: { children: ReactNode })
           </button>
           
           <div className="mt-4 flex flex-col gap-2 border-t border-amber-100 pt-3">
-            <button
-              type="button"
-              onClick={handleQuickDemo}
-              disabled={actionLoading}
-              className="w-full text-center text-xs font-bold text-amber-700 hover:text-amber-900 underline hover:no-underline cursor-pointer py-0.5"
-            >
-              ⚡ Quick Demo Parent Sign In (Leo Jenkins)
-            </button>
             {mode === 'signin' && (
               <p className="text-center text-xs text-slate-500">
                 Forgot your username or password? Please check with the front desk reception staff — they can look up your username and reset your password in the Admin Portal.

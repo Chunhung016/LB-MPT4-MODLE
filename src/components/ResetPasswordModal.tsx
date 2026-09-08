@@ -1,6 +1,6 @@
 import { useState, FormEvent } from 'react';
 import { KeyRound, Check, Copy, Sparkles, X, LoaderCircle, ShieldAlert, CheckCircle2 } from 'lucide-react';
-import { supabase, isSupabaseConfigured, getFunctionErrorMessage } from '../lib/supabase';
+import { manageParentAccount } from '../lib/accountApi';
 
 interface ResetPasswordModalProps {
   isOpen: boolean;
@@ -38,90 +38,15 @@ export default function ResetPasswordModal({
     setNewPassword(`${randomPrefix}${randomNum}pass`);
   };
 
-  const updateLocalStoragePassword = () => {
-    try {
-      const raw = localStorage.getItem('little_bee_local_accounts_v1');
-      if (raw) {
-        const accounts = JSON.parse(raw);
-        const normalized = username.toLowerCase().trim();
-        if (accounts[normalized]) {
-          accounts[normalized].password = newPassword;
-          localStorage.setItem('little_bee_local_accounts_v1', JSON.stringify(accounts));
-          return true;
-        }
-      }
-    } catch {
-      // ignore
-    }
-    return false;
-  };
-
   const handleReset = async (e: FormEvent) => {
     e.preventDefault();
-    if (!newPassword || newPassword.length < 8) {
-      setError('Password must be at least 8 characters.');
-      return;
-    }
-
-    setBusy(true);
-    setError(null);
-
+    if (newPassword.length < 8) { setError('Password must be at least 8 characters.'); return; }
+    setBusy(true); setError(null);
     try {
-      const isLocal = !isSupabaseConfigured || userId.startsWith('local_');
-
-      if (isLocal) {
-        updateLocalStoragePassword();
-        setSuccess(true);
-        onSuccess();
-        setBusy(false);
-        return;
-      }
-
-      // Keep local store in sync
-      updateLocalStoragePassword();
-
-      // Attempt 1: Invoke manage-parent-account edge function
-      const { data, error: funcError } = await supabase.functions.invoke('manage-parent-account', {
-        body: {
-          action: 'update_password',
-          userId,
-          password: newPassword,
-          username,
-        },
-      });
-
-      if (!funcError && !data?.error) {
-        setSuccess(true);
-        onSuccess();
-        return;
-      }
-
-      // Attempt 2: Try direct RPC function admin_set_parent_password
-      const { data: rpcData, error: rpcError } = await supabase.rpc('admin_set_parent_password', {
-        p_user_id: userId,
-        p_password: newPassword,
-      });
-
-      if (!rpcError && (rpcData as any)?.success === true) {
-        setSuccess(true);
-        onSuccess();
-        return;
-      }
-
-      // If both remote attempts fail, check error response
-      const finalErrMsg = await getFunctionErrorMessage(funcError, data);
-      if (finalErrMsg.toLowerCase().includes('unsupported account action')) {
-        setError(
-          'Edge Function not updated in Supabase cloud yet. Please run `supabase functions deploy manage-parent-account` in your terminal or apply the SQL migration.'
-        );
-      } else {
-        setError(finalErrMsg || rpcError?.message || 'Unable to update password.');
-      }
-    } catch (err: any) {
-      setError(err?.message || 'An unexpected error occurred while resetting password.');
-    } finally {
-      setBusy(false);
-    }
+      await manageParentAccount({ action: 'update_password', username, password: newPassword });
+      setSuccess(true); onSuccess();
+    } catch (err) { setError(err instanceof Error ? err.message : 'Unable to update password.'); }
+    finally { setBusy(false); }
   };
 
   const copyLoginDetails = () => {

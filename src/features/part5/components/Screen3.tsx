@@ -370,6 +370,7 @@ export const Screen3: React.FC<Screen3Props> = ({
             // ignore
           }
         })
+        .catch(error => { console.warn('Score was not saved:', error); })
         .finally(() => {
           setIsSubmittingScore(false);
         });

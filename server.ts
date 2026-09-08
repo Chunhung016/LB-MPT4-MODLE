@@ -3,14 +3,17 @@ import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
+import accountsHandler from './server/accounts';
 
 // Load environment variables
 dotenv.config();
+dotenv.config({ path: '.env.local', override: true });
 
 const app = express();
 const PORT = 3000;
 
 app.use(express.json());
+app.all('/api/accounts', accountsHandler);
 
 // Lazy-initialize Gemini AI
 let ai: GoogleGenAI | null = null;

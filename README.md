@@ -7,26 +7,11 @@ Interactive worksheet portal for Little Bee Centre.
 - Child worksheet: `/`
 - Staff program-access dashboard: `/admin`
 
-## Manual Spelling Bee access
+## Accounts and data
 
-1. Open English on the child's device and note the 8-character device access code.
-2. A staff member signs in at `/admin`.
-3. Search for the device code, add the parent/child names, and switch **Spelling Bee** on.
-4. Tap **Check access** on the child's device. The Spelling Bee bubble appears immediately.
-5. Switching it off hides the bubble again on the next refresh (the app also checks automatically every 12 seconds).
+Firebase Authentication handles parent and staff login. Application data is stored in the named Firestore database configured in `src/lib/firebase.ts`. Staff access requires an active `staff_users` document whose `user_id` matches the Firebase Authentication UID.
 
-The dashboard stores grants in Supabase. Row-level security keeps customer details available only to approved staff, and every grant or revoke is recorded in the audit log.
-
-## First staff account
-
-Create the staff user in **Supabase Dashboard → Authentication → Users**, then approve its UUID in the SQL editor:
-
-```sql
-insert into public.staff_users (user_id, display_name, role)
-values ('AUTH-USER-UUID', 'Staff Name', 'admin');
-```
-
-Do not place the service-role or secret key in browser code. The app uses only the public publishable key; database policies enforce access.
+The browser obtains short-lived ID tokens directly from Firebase Authentication and refreshes once after an expired-token response. It does not create or persist its own JWT.
 
 ## Local development
 
@@ -35,12 +20,14 @@ npm install
 npm run dev
 ```
 
-Copy `.env.example` to `.env.local` when setting up a new machine. The current Vercel-linked environment is already configured locally.
+Copy `.env.example` to `.env.local` only when local overrides are needed. Set `VITE_USE_FIREBASE_EMULATORS=true` to use the local Firebase emulators.
 
-## Database
+## Firebase
 
-Supabase migrations are stored in `supabase/migrations`. Apply pending migrations with the pinned Supabase CLI version used by this project:
+Deploy the checked-in Firestore rules and indexes with:
 
 ```bash
-npx --yes supabase@2.116.0 db push --db-url "YOUR_PERCENT_ENCODED_DATABASE_URL"
+npm exec firebase deploy --only firestore --project gen-lang-client-0767360605
 ```
+
+Staff provisioning and authentication migration scripts are in `scripts/`. They run in dry-run mode unless their documented apply flag is supplied.
