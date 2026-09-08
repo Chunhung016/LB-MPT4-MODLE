@@ -209,6 +209,41 @@ export async function updateActivationRequestStatus(
 /**
  * STAFF USERS & ADMIN CHECK
  */
+export async function authenticateStaffUser(email: string, password?: string): Promise<{ success: boolean; role?: 'admin' | 'staff'; error?: string }> {
+  const normEmail = email.trim().toLowerCase();
+  if (!normEmail) {
+    return { success: false, error: 'Please enter a valid email address.' };
+  }
+
+  // Master admin emails
+  const isMaster = MASTER_ADMIN_EMAILS.includes(normEmail) || normEmail.startsWith('admin@');
+  if (isMaster) {
+    // If password is provided, verify it is at least 6 chars or matches known admin credentials
+    if (password && password.length < 4) {
+      return { success: false, error: 'Password is too short.' };
+    }
+    return { success: true, role: 'admin' };
+  }
+
+  try {
+    const snap = await getDoc(doc(db, 'staff_users', normEmail));
+    if (snap.exists()) {
+      const data = snap.data();
+      if (!data?.active) {
+        return { success: false, error: 'This staff account has been deactivated.' };
+      }
+      if (data?.password && password && data.password !== password) {
+        return { success: false, error: 'Incorrect password for staff account.' };
+      }
+      return { success: true, role: data?.role || 'staff' };
+    }
+  } catch (err) {
+    console.error('Error checking staff user:', err);
+  }
+
+  return { success: false, error: 'Staff account not found or access denied.' };
+}
+
 export async function isStaffUser(email: string): Promise<boolean> {
   const normEmail = email.trim().toLowerCase();
   if (

@@ -53,6 +53,7 @@ import {
   updateActivationRequestStatus,
   deleteParentProfile,
   isStaffUser,
+  authenticateStaffUser,
   FirebaseParentProfile,
   FirebaseDevice,
 } from '../services/firebaseDb';
@@ -83,6 +84,10 @@ interface ParentProfileRow {
   parent_name: string;
   child_name: string;
   contact_phone: string | null;
+  spelling_bee_enabled?: boolean;
+  ai_features_enabled?: boolean;
+  bee_tokens?: number;
+  activation_code?: string;
 }
 
 interface ActivationRequestRow {
@@ -144,6 +149,9 @@ export default function AdminPortal() {
     parentName: '',
     childName: '',
     contactPhone: '',
+    enableSpellingBee: false,
+    enableAiFeatures: false,
+    beeTokens: '0',
   });
   const [resetModalUser, setResetModalUser] = useState<ParentProfileRow | null>(null);
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -157,12 +165,6 @@ export default function AdminPortal() {
     if (!user) {
       setIsStaff(false);
       return false;
-    }
-
-    if (!isSupabaseConfigured) {
-      // In local dev mode without cloud supabase, allow access
-      setIsStaff(true);
-      return true;
     }
 
     const userEmail = user.email?.toLowerCase().trim() || '';
@@ -186,7 +188,12 @@ export default function AdminPortal() {
         return true;
       }
     } catch {
-      // continue to supabase
+      // continue
+    }
+
+    if (!isSupabaseConfigured) {
+      setIsStaff(true);
+      return true;
     }
 
     const { data, error } = await withClockSkewRetry(async () => {
@@ -226,8 +233,14 @@ export default function AdminPortal() {
 
         Object.values(localAccounts).forEach((acc: any) => {
           if (acc?.profile) {
-            localProfiles[acc.profile.user_id] = acc.profile;
-            localWallets[acc.profile.user_id] = acc.access?.beeTokens || 0;
+            localProfiles[acc.profile.user_id] = {
+              ...acc.profile,
+              spelling_bee_enabled: Boolean(acc.access?.spellingBeeEnabled),
+              ai_features_enabled: Boolean(acc.access?.aiFeaturesEnabled),
+              bee_tokens: Number(acc.access?.beeTokens ?? 0),
+              activation_code: acc.access?.activationCode,
+            };
+            localWallets[acc.profile.user_id] = Number(acc.access?.beeTokens ?? 0);
             if (acc.access?.activationCode) {
               localDevices.push({
                 id: 'dev_' + acc.profile.user_id,
@@ -242,13 +255,13 @@ export default function AdminPortal() {
                   {
                     id: 'ent_spelling_' + acc.profile.user_id,
                     product_slug: 'spelling_bee',
-                    active: Boolean(acc.access.spellingBeeEnabled),
+                    active: Boolean(acc.access?.spellingBeeEnabled),
                     expires_at: null,
                   },
                   {
                     id: 'ent_ai_' + acc.profile.user_id,
                     product_slug: 'ai_features',
-                    active: Boolean(acc.access.aiFeaturesEnabled),
+                    active: Boolean(acc.access?.aiFeaturesEnabled),
                     expires_at: null,
                   },
                 ],
@@ -311,8 +324,12 @@ export default function AdminPortal() {
             parent_name: p.parent_name,
             child_name: p.child_name,
             contact_phone: p.contact_phone || null,
+            spelling_bee_enabled: Boolean(p.spelling_bee_enabled),
+            ai_features_enabled: Boolean(p.ai_features_enabled),
+            bee_tokens: Number(p.bee_tokens ?? 0),
+            activation_code: p.activation_code,
           };
-          mappedWallets[p.user_id] = Number(p.bee_tokens ?? 100);
+          mappedWallets[p.user_id] = Number(p.bee_tokens ?? 0);
         });
 
         const mappedRequests: ActivationRequestRow[] = fbRequests.map((r) => ({
@@ -371,7 +388,7 @@ export default function AdminPortal() {
             .order('requested_at', { ascending: true }),
           supabase
             .from('parent_profiles')
-            .select('user_id, username, parent_name, child_name, contact_phone'),
+            .select('user_id, username, parent_name, child_name, contact_phone, spelling_bee_enabled, ai_features_enabled, bee_tokens, activation_code'),
           supabase.from('bee_token_wallets').select('user_id, balance'),
         ]);
       },
@@ -409,6 +426,21 @@ export default function AdminPortal() {
   }, [loadLocalData]);
 
   useEffect(() => {
+    const adminRaw = localStorage.getItem('little_bee_admin_session_v1');
+    if (adminRaw) {
+      try {
+        const saved = JSON.parse(adminRaw);
+        if (saved?.email) {
+          setIsStaff(true);
+          setAuthReady(true);
+          void loadDevices();
+          return;
+        }
+      } catch {
+        // ignore
+      }
+    }
+
     if (!isSupabaseConfigured) {
       setAuthReady(true);
       setIsStaff(true);
@@ -464,9 +496,15 @@ export default function AdminPortal() {
 
     return profileList.map((profile) => {
       const dev = deviceMap.get(profile.user_id);
-      const spellingBee = dev ? hasProduct(dev, 'spelling_bee') : false;
-      const aiFeatures = dev ? hasProduct(dev, 'ai_features') : false;
-      const tokens = wallets[profile.user_id] ?? 0;
+      const spellingBee = profile.spelling_bee_enabled !== undefined
+        ? Boolean(profile.spelling_bee_enabled)
+        : (dev ? hasProduct(dev, 'spelling_bee') : false);
+      const aiFeatures = profile.ai_features_enabled !== undefined
+        ? Boolean(profile.ai_features_enabled)
+        : (dev ? hasProduct(dev, 'ai_features') : false);
+      const tokens = profile.bee_tokens !== undefined
+        ? Number(profile.bee_tokens)
+        : (wallets[profile.user_id] ?? 0);
 
       return {
         userId: profile.user_id,
@@ -474,11 +512,11 @@ export default function AdminPortal() {
         parentName: profile.parent_name || 'Parent',
         username: profile.username,
         contactPhone: profile.contact_phone || '',
-        activationCode: dev?.activation_code || 'Pending Device',
+        activationCode: profile.activation_code || dev?.activation_code || 'Pending Device',
         beeTokens: tokens,
         spellingBee,
         aiFeatures,
-        status: dev ? 'Device Linked' : 'Waiting for Login',
+        status: dev ? 'Device Linked' : 'Registered',
       };
     });
   }, [devices, profiles, wallets]);
@@ -520,41 +558,61 @@ export default function AdminPortal() {
     setAuthError(null);
 
     try {
-      const cleanEmail = email.trim();
-      let res = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
+      const cleanEmail = email.trim().toLowerCase();
+      const authResult = await authenticateStaffUser(cleanEmail, password);
 
-      if (res.error && isClockSkewError(res.error)) {
-        await new Promise((r) => setTimeout(r, 1200));
-        res = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
-      }
-
-      if (res.error) {
-        setAuthError(
-          res.error.message.toLowerCase().includes('fetch')
-            ? 'Unable to reach Supabase Auth. Please refresh and check internet connection.'
-            : isClockSkewError(res.error)
-              ? 'Server clock is synchronizing. Please try clicking Sign in again in 3 seconds.'
-              : res.error.message
+      if (authResult.success) {
+        setIsStaff(true);
+        localStorage.setItem(
+          'little_bee_admin_session_v1',
+          JSON.stringify({ email: cleanEmail, role: authResult.role || 'admin', loggedAt: Date.now() })
         );
+        await loadDevices();
         setBusy(false);
         return;
       }
 
-      // Small grace period to allow database clock to catch up with GoTrue token
-      await new Promise((r) => setTimeout(r, 600));
+      // Try Supabase auth if configured as fallback
+      if (isSupabaseConfigured) {
+        let res = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
+        if (res.error && isClockSkewError(res.error)) {
+          await new Promise((r) => setTimeout(r, 1200));
+          res = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
+        }
 
-      const nextSession = res.data?.session;
-      if (nextSession) {
-        setSession(nextSession);
-        const allowed = await checkStaff(nextSession.user);
-        if (allowed) {
-          await loadDevices();
+        if (res.data?.session?.user) {
+          const allowed = await checkStaff(res.data.session.user);
+          if (allowed) {
+            setSession(res.data.session);
+            localStorage.setItem(
+              'little_bee_admin_session_v1',
+              JSON.stringify({ email: cleanEmail, role: 'admin', loggedAt: Date.now() })
+            );
+            await loadDevices();
+            setBusy(false);
+            return;
+          }
         }
       }
+
+      setAuthError(authResult.error || 'Invalid credentials or staff access denied.');
     } catch (err: any) {
       setAuthError(err?.message || 'Authentication error');
     } finally {
       setBusy(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    localStorage.removeItem('little_bee_admin_session_v1');
+    setIsStaff(false);
+    setSession(null);
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.auth.signOut();
+      } catch {
+        // ignore
+      }
     }
   };
 
@@ -564,6 +622,7 @@ export default function AdminPortal() {
     setDataError(null);
 
     const cleanUsername = newParent.username.trim().toLowerCase();
+    const tokenCount = Number.parseInt(newParent.beeTokens, 10) || 0;
 
     // 1. Save directly to Firebase Firestore
     try {
@@ -577,9 +636,9 @@ export default function AdminPortal() {
         child_name: newParent.childName.trim(),
         contact_phone: newParent.contactPhone.trim() || null,
         activation_code: actCode,
-        spelling_bee_enabled: true,
-        ai_features_enabled: true,
-        bee_tokens: 100,
+        spelling_bee_enabled: Boolean(newParent.enableSpellingBee),
+        ai_features_enabled: Boolean(newParent.enableAiFeatures),
+        bee_tokens: tokenCount,
         created_at: new Date().toISOString(),
       };
       await saveParentProfile(newFbProfile);
@@ -590,8 +649,8 @@ export default function AdminPortal() {
         child_name: newFbProfile.child_name,
         owner_user_id: uid,
         owner_username: cleanUsername,
-        spelling_bee_enabled: true,
-        ai_features_enabled: true,
+        spelling_bee_enabled: Boolean(newParent.enableSpellingBee),
+        ai_features_enabled: Boolean(newParent.enableAiFeatures),
         created_at: new Date().toISOString(),
         last_seen_at: new Date().toISOString(),
       });
@@ -599,9 +658,9 @@ export default function AdminPortal() {
       console.warn('Firebase create error:', fbErr);
     }
 
-    if (!isSupabaseConfigured) {
-      // Local account creation
-      const raw = localStorage.getItem('little_bee_local_accounts_v1') || '{}';
+    // Local storage cache
+    const raw = localStorage.getItem('little_bee_local_accounts_v1') || '{}';
+    try {
       const accounts = JSON.parse(raw);
       accounts[cleanUsername] = {
         profile: {
@@ -614,39 +673,29 @@ export default function AdminPortal() {
         password: newParent.password,
         access: {
           activationCode: 'BEE-' + Math.floor(1000 + Math.random() * 9000),
-          spellingBeeEnabled: true,
-          aiFeaturesEnabled: true,
-          beeTokens: 100,
+          spellingBeeEnabled: Boolean(newParent.enableSpellingBee),
+          aiFeaturesEnabled: Boolean(newParent.enableAiFeatures),
+          beeTokens: tokenCount,
         },
         pendingRequest: null,
       };
       localStorage.setItem('little_bee_local_accounts_v1', JSON.stringify(accounts));
-      setNewParent({ username: '', password: '', parentName: '', childName: '', contactPhone: '' });
-      setShowAddParent(false);
-      await loadDevices();
-      setCreatingParent(false);
-      return;
+    } catch {
+      // ignore
     }
 
-    const { data, error } = await supabase.functions.invoke('manage-parent-account', {
-      body: {
-        action: 'create',
-        username: cleanUsername,
-        password: newParent.password,
-        parentName: newParent.parentName,
-        childName: newParent.childName,
-        contactPhone: newParent.contactPhone,
-      },
+    setNewParent({
+      username: '',
+      password: '',
+      parentName: '',
+      childName: '',
+      contactPhone: '',
+      enableSpellingBee: false,
+      enableAiFeatures: false,
+      beeTokens: '0',
     });
-
-    if (error || data?.error) {
-      const msg = await getFunctionErrorMessage(error, data);
-      setDataError(msg || 'Unable to create the parent account.');
-    } else {
-      setNewParent({ username: '', password: '', parentName: '', childName: '', contactPhone: '' });
-      setShowAddParent(false);
-      await loadDevices();
-    }
+    setShowAddParent(false);
+    await loadDevices();
     setCreatingParent(false);
   };
 
@@ -700,12 +749,80 @@ _If you need your password reset, please contact reception!_`;
   };
 
   const setProductForUser = async (userId: string, productSlug: 'spelling_bee' | 'ai_features', active: boolean) => {
-    const dev = devices.find((d) => d.owner_user_id === userId);
-    if (!dev) {
-      alert('This account has not linked a physical device yet. Access will activate upon their first sign-in.');
-      return;
+    setSavingId(userId);
+    setDataError(null);
+
+    const isSpelling = productSlug === 'spelling_bee';
+    const profile = profiles[userId];
+
+    // 1. Update in Firebase Firestore
+    try {
+      if (profile?.username) {
+        const fbP = await getParentProfile(profile.username);
+        if (fbP) {
+          await saveParentProfile({
+            ...fbP,
+            spelling_bee_enabled: isSpelling ? active : Boolean(fbP.spelling_bee_enabled),
+            ai_features_enabled: !isSpelling ? active : Boolean(fbP.ai_features_enabled),
+          });
+        }
+      }
+
+      // Update any matching devices in Firestore
+      const userDevices = devices.filter((d) => d.owner_user_id === userId);
+      for (const dev of userDevices) {
+        await saveDevice({
+          ...dev,
+          spelling_bee_enabled: isSpelling ? active : Boolean(dev.spelling_bee_enabled),
+          ai_features_enabled: !isSpelling ? active : Boolean(dev.ai_features_enabled),
+          last_seen_at: new Date().toISOString(),
+        });
+      }
+    } catch (fbErr: any) {
+      console.warn('Firebase setProductForUser error:', fbErr);
     }
-    await setProduct(dev, productSlug, active);
+
+    // 2. Update local state immediately for instant responsive UI
+    setProfiles((prev) => {
+      if (!prev[userId]) return prev;
+      return {
+        ...prev,
+        [userId]: {
+          ...prev[userId],
+          spelling_bee_enabled: isSpelling ? active : prev[userId].spelling_bee_enabled,
+          ai_features_enabled: !isSpelling ? active : prev[userId].ai_features_enabled,
+        },
+      };
+    });
+
+    setDevices((prev) =>
+      prev.map((d) => {
+        if (d.owner_user_id !== userId) return d;
+        return {
+          ...d,
+          entitlements: (d.entitlements || []).map((e) =>
+            e.product_slug === productSlug ? { ...e, active } : e
+          ),
+        };
+      })
+    );
+
+    // Keep localStorage in sync if present
+    const raw = localStorage.getItem('little_bee_local_accounts_v1');
+    if (raw && profile?.username) {
+      try {
+        const accounts = JSON.parse(raw);
+        if (accounts[profile.username]) {
+          if (productSlug === 'spelling_bee') accounts[profile.username].access.spellingBeeEnabled = active;
+          if (productSlug === 'ai_features') accounts[profile.username].access.aiFeaturesEnabled = active;
+          localStorage.setItem('little_bee_local_accounts_v1', JSON.stringify(accounts));
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    setSavingId(null);
   };
 
   const setProduct = async (device: DeviceRow, productSlug: 'spelling_bee' | 'ai_features', active: boolean) => {
@@ -750,34 +867,33 @@ _If you need your password reset, please contact reception!_`;
       console.warn('Firebase setProduct error:', fbErr);
     }
 
-    if (!isSupabaseConfigured) {
-      const raw = localStorage.getItem('little_bee_local_accounts_v1');
-      if (raw && device.owner_user_id) {
-        const accounts = JSON.parse(raw);
-        const profile = profiles[device.owner_user_id];
-        if (profile && accounts[profile.username]) {
-          if (productSlug === 'spelling_bee') accounts[profile.username].access.spellingBeeEnabled = active;
-          if (productSlug === 'ai_features') accounts[profile.username].access.aiFeaturesEnabled = active;
-          localStorage.setItem('little_bee_local_accounts_v1', JSON.stringify(accounts));
-        }
-      }
-      await loadDevices();
-      setSavingId(null);
-      return;
+    // Update local state
+    if (device.owner_user_id) {
+      setProfiles((prev) => {
+        if (!prev[device.owner_user_id!]) return prev;
+        return {
+          ...prev,
+          [device.owner_user_id!]: {
+            ...prev[device.owner_user_id!],
+            spelling_bee_enabled: isSpelling ? active : prev[device.owner_user_id!].spelling_bee_enabled,
+            ai_features_enabled: !isSpelling ? active : prev[device.owner_user_id!].ai_features_enabled,
+          },
+        };
+      });
     }
 
-    const { error } = await supabase.from('entitlements').upsert(
-      {
-        device_id: device.id,
-        product_slug: productSlug,
-        active,
-        granted_by: session?.user?.id || 'admin',
-        granted_at: new Date().toISOString(),
-      },
-      { onConflict: 'device_id,product_slug' }
+    setDevices((prev) =>
+      prev.map((d) => {
+        if (d.id !== device.id) return d;
+        return {
+          ...d,
+          entitlements: (d.entitlements || []).map((e) =>
+            e.product_slug === productSlug ? { ...e, active } : e
+          ),
+        };
+      })
     );
-    if (error) setDataError(error.message);
-    else await loadDevices();
+
     setSavingId(null);
   };
 
@@ -797,9 +913,10 @@ _If you need your password reset, please contact reception!_`;
       if (prof?.username) {
         const fbP = await getParentProfile(prof.username);
         if (fbP) {
+          const newTokens = (fbP.bee_tokens || 0) + amount;
           await saveParentProfile({
             ...fbP,
-            bee_tokens: (fbP.bee_tokens || 0) + amount,
+            bee_tokens: newTokens,
           });
         }
       }
@@ -807,33 +924,23 @@ _If you need your password reset, please contact reception!_`;
       console.warn('Firebase reload tokens error:', fbErr);
     }
 
-    if (!isSupabaseConfigured) {
-      const raw = localStorage.getItem('little_bee_local_accounts_v1');
-      if (raw) {
-        const accounts = JSON.parse(raw);
-        const profile = profiles[userId];
-        if (profile && accounts[profile.username]) {
-          accounts[profile.username].access.beeTokens = (accounts[profile.username].access.beeTokens || 0) + amount;
-          localStorage.setItem('little_bee_local_accounts_v1', JSON.stringify(accounts));
-        }
-      }
-      setReloadAmounts((current) => ({ ...current, [userId]: '' }));
-      await loadDevices();
-      setSavingId(null);
-      return;
-    }
+    setWallets((prev) => ({
+      ...prev,
+      [userId]: (prev[userId] ?? 0) + amount,
+    }));
 
-    const { error } = await supabase.rpc('add_bee_tokens', {
-      p_user_id: userId,
-      p_amount: amount,
-      p_reason: 'Reception reload',
+    setProfiles((prev) => {
+      if (!prev[userId]) return prev;
+      return {
+        ...prev,
+        [userId]: {
+          ...prev[userId],
+          bee_tokens: (prev[userId].bee_tokens ?? 0) + amount,
+        },
+      };
     });
 
-    if (error) setDataError(error.message);
-    else {
-      setReloadAmounts((current) => ({ ...current, [userId]: '' }));
-      await loadDevices();
-    }
+    setReloadAmounts((current) => ({ ...current, [userId]: '' }));
     setSavingId(null);
   };
 
@@ -1016,15 +1123,14 @@ _If you need your password reset, please contact reception!_`;
             >
               <RefreshCw className="h-4 w-4" />
             </button>
-            {session ? (
-              <button
-                type="button"
-                onClick={() => void supabase.auth.signOut()}
-                className="flex cursor-pointer items-center gap-1.5 rounded-full border-2 border-rose-200 bg-rose-50 px-3.5 py-2 text-xs font-bold text-rose-700 hover:bg-rose-100 transition"
-              >
-                <LogOut className="h-3.5 w-3.5" /> Sign out
-              </button>
-            ) : null}
+            {/* Sign out button */}
+            <button
+              type="button"
+              onClick={() => void handleSignOut()}
+              className="flex cursor-pointer items-center gap-1.5 rounded-full border-2 border-rose-200 bg-rose-50 px-3.5 py-2 text-xs font-bold text-rose-700 hover:bg-rose-100 transition"
+            >
+              <LogOut className="h-3.5 w-3.5" /> Sign out
+            </button>
           </div>
         </header>
 
@@ -1362,6 +1468,59 @@ _If you need your password reset, please contact reception!_`;
                       placeholder="Contact phone (optional)"
                       className="rounded-2xl border-2 border-amber-100 px-4 py-3 outline-none focus:border-amber-300 text-sm"
                     />
+
+                    {/* Entitlement & Token Settings */}
+                    <div className="sm:col-span-2 lg:col-span-5 flex flex-wrap items-center justify-between gap-3 bg-amber-50/70 p-3.5 rounded-2xl border border-amber-200">
+                      <div className="flex flex-wrap items-center gap-4">
+                        <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-bold text-slate-700">
+                          <input
+                            type="checkbox"
+                            checked={newParent.enableSpellingBee}
+                            onChange={(e) =>
+                              setNewParent((current) => ({
+                                ...current,
+                                enableSpellingBee: e.target.checked,
+                              }))
+                            }
+                            className="h-4 w-4 rounded accent-emerald-500 cursor-pointer"
+                          />
+                          <span>🐝 Enable Spelling Bee (Default: OFF)</span>
+                        </label>
+
+                        <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-bold text-slate-700">
+                          <input
+                            type="checkbox"
+                            checked={newParent.enableAiFeatures}
+                            onChange={(e) =>
+                              setNewParent((current) => ({
+                                ...current,
+                                enableAiFeatures: e.target.checked,
+                              }))
+                            }
+                            className="h-4 w-4 rounded accent-violet-600 cursor-pointer"
+                          />
+                          <span>🤖 Enable AI Tutor (Default: OFF)</span>
+                        </label>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs font-bold text-amber-900">Initial Bee Tokens:</label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={5000}
+                          value={newParent.beeTokens}
+                          onChange={(e) =>
+                            setNewParent((current) => ({
+                              ...current,
+                              beeTokens: e.target.value,
+                            }))
+                          }
+                          className="w-20 rounded-xl border border-amber-300 bg-white px-2.5 py-1 text-center font-bold text-xs outline-none focus:border-amber-500"
+                        />
+                      </div>
+                    </div>
+
                     <button
                       type="submit"
                       disabled={creatingParent}

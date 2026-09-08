@@ -149,9 +149,9 @@ export function ParentAccountProvider({ children }: { children: ReactNode }) {
     });
     setAccess({
       activationCode: data.activation_code || null,
-      spellingBeeEnabled: data.spelling_bee_enabled ?? true,
-      aiFeaturesEnabled: data.ai_features_enabled ?? true,
-      beeTokens: Number(data.bee_tokens ?? 100),
+      spellingBeeEnabled: Boolean(data.spelling_bee_enabled),
+      aiFeaturesEnabled: Boolean(data.ai_features_enabled),
+      beeTokens: Number(data.bee_tokens ?? 0),
     });
     setSession(makeSession(data.user_id, data.username));
   }, []);
@@ -191,9 +191,9 @@ export function ParentAccountProvider({ children }: { children: ReactNode }) {
           child_name: localAcc.profile?.child_name || 'Student',
           contact_phone: localAcc.profile?.contact_phone || null,
           activation_code: localAcc.access?.activationCode || 'BEE-1001',
-          spelling_bee_enabled: localAcc.access?.spellingBeeEnabled ?? true,
-          ai_features_enabled: localAcc.access?.aiFeaturesEnabled ?? true,
-          bee_tokens: localAcc.access?.beeTokens ?? 100,
+          spelling_bee_enabled: Boolean(localAcc.access?.spellingBeeEnabled),
+          ai_features_enabled: Boolean(localAcc.access?.aiFeaturesEnabled),
+          bee_tokens: Number(localAcc.access?.beeTokens ?? 0),
           created_at: new Date().toISOString(),
         };
         applyProfileData(migrated);
@@ -301,9 +301,9 @@ export function ParentAccountProvider({ children }: { children: ReactNode }) {
           child_name: localAcc.profile?.child_name || 'Student',
           contact_phone: localAcc.profile?.contact_phone || null,
           activation_code: localAcc.access?.activationCode || `BEE-${Math.floor(1000 + Math.random() * 9000)}`,
-          spelling_bee_enabled: localAcc.access?.spellingBeeEnabled ?? true,
-          ai_features_enabled: localAcc.access?.aiFeaturesEnabled ?? true,
-          bee_tokens: localAcc.access?.beeTokens ?? 100,
+          spelling_bee_enabled: Boolean(localAcc.access?.spellingBeeEnabled),
+          ai_features_enabled: Boolean(localAcc.access?.aiFeaturesEnabled),
+          bee_tokens: Number(localAcc.access?.beeTokens ?? 0),
           created_at: new Date().toISOString(),
         };
 
@@ -324,7 +324,7 @@ export function ParentAccountProvider({ children }: { children: ReactNode }) {
             .maybeSingle();
 
           if (supaProfile) {
-            let tokenBalance = 100;
+            let tokenBalance = 0;
             try {
               const { data: w } = await supabase
                 .from('bee_token_wallets')
@@ -344,8 +344,8 @@ export function ParentAccountProvider({ children }: { children: ReactNode }) {
               child_name: supaProfile.child_name || 'Student',
               contact_phone: supaProfile.contact_phone || null,
               activation_code: `BEE-${Math.floor(1000 + Math.random() * 9000)}`,
-              spelling_bee_enabled: true,
-              ai_features_enabled: true,
+              spelling_bee_enabled: Boolean(supaProfile.spelling_bee_enabled),
+              ai_features_enabled: Boolean(supaProfile.ai_features_enabled),
               bee_tokens: tokenBalance,
               created_at: supaProfile.created_at || new Date().toISOString(),
             };
@@ -359,28 +359,6 @@ export function ParentAccountProvider({ children }: { children: ReactNode }) {
         } catch {
           // ignore
         }
-      }
-
-      // 4. Quick starter student accounts so students can log in smoothly
-      if (norm === 'student' || norm === 'student1' || norm === 'learner') {
-        const demoStudent: FirebaseParentProfile = {
-          user_id: `usr_${norm}`,
-          username: norm,
-          password: password || '12345678',
-          parent_name: 'Parent Guardian',
-          child_name: norm === 'learner' ? 'Learner' : 'Student Bee',
-          contact_phone: '+1 (555) 019-2834',
-          activation_code: 'BEE-2026',
-          spelling_bee_enabled: true,
-          ai_features_enabled: true,
-          bee_tokens: 150,
-          created_at: new Date().toISOString(),
-        };
-        await saveParentProfile(demoStudent);
-        localStorage.setItem(LOCAL_SESSION_KEY, norm);
-        applyProfileData(demoStudent);
-        setActionLoading(false);
-        return true;
       }
 
       // Not found
@@ -439,9 +417,9 @@ export function ParentAccountProvider({ children }: { children: ReactNode }) {
         child_name: childName.trim() || 'Little Learner',
         contact_phone: contactPhone.trim() || null,
         activation_code: activationCode,
-        spelling_bee_enabled: true,
-        ai_features_enabled: true,
-        bee_tokens: 100,
+        spelling_bee_enabled: false,
+        ai_features_enabled: false,
+        bee_tokens: 0,
         created_at: new Date().toISOString(),
       };
 
@@ -456,8 +434,8 @@ export function ParentAccountProvider({ children }: { children: ReactNode }) {
         child_name: newProfile.child_name,
         owner_user_id: userId,
         owner_username: norm,
-        spelling_bee_enabled: true,
-        ai_features_enabled: true,
+        spelling_bee_enabled: false,
+        ai_features_enabled: false,
         created_at: new Date().toISOString(),
         last_seen_at: new Date().toISOString(),
       });
@@ -475,9 +453,9 @@ export function ParentAccountProvider({ children }: { children: ReactNode }) {
         password,
         access: {
           activationCode,
-          spellingBeeEnabled: true,
-          aiFeaturesEnabled: true,
-          beeTokens: 100,
+          spellingBeeEnabled: false,
+          aiFeaturesEnabled: false,
+          beeTokens: 0,
         },
         pendingRequest: null,
       };
